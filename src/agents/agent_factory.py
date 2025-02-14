@@ -1,4 +1,5 @@
 from agents.random_agent import RandomAgent
+from agents.actor_critic_agent import ActorCriticAgent
 
 class AgentFactory:
     @staticmethod
@@ -15,10 +16,12 @@ class AgentFactory:
         if agent_str == "RANDOM":
             return RandomAgent(config)
         elif agent_str == "ACTOR-CRITIC":
-            pass
+            return ActorCriticAgent(config)
         elif agent_str == "LQR":
+            # Not implemented yet
             pass
         elif agent_str == "LYAPUNOV":
+            # Not implemented yet
             pass
         else:
             raise ValueError(f"Unknown agent type: {agent_str}")
