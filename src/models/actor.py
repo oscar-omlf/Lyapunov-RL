@@ -27,8 +27,8 @@ class NStepActor(TwoHeadedMLP):
         # Head for the log of the diagonal elements of the Cholesky decomposition
         self.log_diag_chol_head = nn.Linear(128, action_dim)
 
-        # Optional: use double precision if desired (mimicking your one-step actor)
-        self.double()
+        # Should I use double precision?
+        # self.double()
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

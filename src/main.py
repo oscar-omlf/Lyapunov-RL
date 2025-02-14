@@ -36,13 +36,14 @@ def env_interaction(env_str: str, config: dict, num_episodes: int) -> tuple[list
             ep_return += reward
 
             agent.add_transition((old_obs, action, reward, obs))
-            loss = agent.update()
-
-            if loss:
-                actor_loss, critic_loss = loss
-                ep_actor_losses.append(actor_loss)
-                ep_critic_losses.append(critic_loss)
             done = terminated or truncated
+
+        loss = agent.update()
+
+        if loss:
+            actor_loss, critic_loss = loss
+            ep_actor_losses.append(actor_loss)
+            ep_critic_losses.append(critic_loss)
 
         episode_returns.append(ep_return)
         avg_actor_loss = np.mean(ep_actor_losses) if ep_actor_losses else 0.0
@@ -74,7 +75,8 @@ def execute_agent_runs(env_str: str, agent_str: str, num_runs: int, num_episodes
 
         config = {
             "agent_str": agent_str,
-            "n_steps": 3,
+            "n_steps": 5,
+            "buffer_size": 200,
             "gamma": gamma,
             "actor_lr": actor_lr,
             "critic_lr": critic_lr,
@@ -94,7 +96,7 @@ def run_set_parameters(env_str: str, agent_str: str, tracker: MetricsTracker,
     Run the default configuration for the given agent type on the environment.
     The run's metrics are added to the tracker.
     """
-    gamma, actor_lr, critic_lr = 0.99, 0.0001, 0.0005
+    gamma, actor_lr, critic_lr = 0.99, 0.0008, 0.001
     print(f"Default hyperparameters: Gamma={gamma}, Actor LR={actor_lr}, Critic LR={critic_lr}")
 
     returns_list, actor_losses, critic_losses = execute_agent_runs(
@@ -114,11 +116,11 @@ def run_set_parameters(env_str: str, agent_str: str, tracker: MetricsTracker,
 
 def main():
     env_str = "Pendulum-v1"
-    agent_str = "RANDOM"
+    agent_str = "ACTOR-CRITIC"
     tracker = MetricsTracker()
 
-    num_runs = 10
-    num_episodes = 200
+    num_runs = 3
+    num_episodes = 500
 
     run_set_parameters(env_str, agent_str, tracker, num_runs, num_episodes)
 

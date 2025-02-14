@@ -20,6 +20,8 @@ class NStepCritic(nn.Module):
             nn.Linear(128, 1)
         )
 
+        # self.double()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass that outputs the estimated state value.

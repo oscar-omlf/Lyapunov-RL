@@ -104,4 +104,4 @@ class ACTrainer(AbstractTrainer):
         self.actor_optimizer.step()
         self.critic_optimizer.step()
 
-        return total_loss.item()
+        return actor_loss.item(), critic_loss.item()

@@ -35,11 +35,8 @@ class AbstractAgent(ABC):
         If 'buffer_size' is None, no replay buffer is created.
         """
         self.config = config
-        buffer_size = config.get('buffer_size')
-        if buffer_size is not None:
-            self.replay_buffer = ReplayBuffer(buffer_size)
-        else:
-            self.replay_buffer = None
+        buffer_size = config.get('buffer_size', 500)
+        self.replay_buffer = ReplayBuffer(buffer_size)
     
     @abstractmethod
     def policy(self, state):
