@@ -52,5 +52,6 @@ class NStepActor(TwoHeadedMLP):
         mean, log_diag_chol = self(x)
         # Exponentiate the log diagonal to get the diagonal of the Cholesky factor,
         # then reconstruct the covariance matrix.
-        cov_matrix = torch.diag_embed(torch.exp(log_diag_chol))
+        cov_diag = torch.exp(log_diag_chol) + 1e-5
+        cov_matrix = torch.diag_embed(cov_diag)
         return MultivariateNormal(mean, cov_matrix)

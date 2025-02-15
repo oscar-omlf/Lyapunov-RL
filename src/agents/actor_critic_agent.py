@@ -15,6 +15,7 @@ class ActorCriticAgent(AbstractAgent):
         # Extract hyperparameters
         self.gamma = config.get("gamma", 0.99)
         self.n_steps = config.get("n_steps", 3)
+        self.entropy_coef = config.get("entropy_coef", 0.01)
         self.actor_lr = config.get("actor_lr", 0.0001)
         self.critic_lr = config.get("critic_lr", 0.0005)
         self.device = config.get("device", "cpu")
@@ -34,6 +35,7 @@ class ActorCriticAgent(AbstractAgent):
             critic=self.critic,
             gamma=self.gamma,
             n_steps=self.n_steps,
+            entropy_coef=self.entropy_coef,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
             device=self.device

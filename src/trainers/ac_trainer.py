@@ -6,7 +6,7 @@ import numpy as np
 from trainers.abstract_trainer import AbstractTrainer
 
 class ACTrainer(AbstractTrainer):
-    def __init__(self, buffer, actor, critic, gamma, n_steps, actor_lr, critic_lr, device):
+    def __init__(self, buffer, actor, critic, gamma, n_steps, entropy_coef, actor_lr, critic_lr, device):
         """
         Initialize the ACTrainer with the replay buffer, actor, critic,
         discount factor, number of steps for n-step return, learning rates, and device.
@@ -16,6 +16,7 @@ class ACTrainer(AbstractTrainer):
         self.critic = critic
         self.gamma = gamma
         self.n_steps = n_steps
+        self.entropy_coef = entropy_coef
         self.device = device
 
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_lr)
@@ -23,28 +24,26 @@ class ACTrainer(AbstractTrainer):
         self.critic_loss_fn = nn.MSELoss()
 
     def train(self):
-        """
-        Train the actor and critic using all transitions in the replay buffer.
-        Assumes the buffer contains transitions from a single episode.
-        Each transition is a tuple: (state, action, reward, next_state).
-        Computes n-step returns for each time step, then updates both networks.
-        """
         if len(self.buffer) == 0:
             return None
 
-        # Retrieve and clear all transitions from the buffer.
-        # Note: We assume transitions were collected in order for a single episode.
         transitions = list(self.buffer.buffer)
         self.buffer.buffer.clear()
 
-        states, actions, targets, advantages = [], [], [], []
+        states = [t[0] for t in transitions]
+        actions = [t[1] for t in transitions]
+
+        states_tensor = torch.tensor(np.array(states), dtype=torch.float32, device=self.device)
+        with torch.no_grad():
+            pre_update_values = self.critic(states_tensor).squeeze().cpu().numpy()
+
+        targets, advantages = [], []
         L = len(transitions)
 
         for t in range(L):
             state_t, action_t, reward_t, _ = transitions[t]
             reward_t = float(reward_t)
 
-            # Compute n-step return G_t.
             G = 0.0
             discount = 1.0
             n = min(self.n_steps, L - t)
@@ -53,27 +52,19 @@ class ACTrainer(AbstractTrainer):
                 G += discount * float(r)
                 discount *= self.gamma
 
-            # If there is a next state available beyond the n-step window, add bootstrap.
-            if t + self.n_steps < L:
-                state_tpn, _, _, _ = transitions[t + self.n_steps]
-                state_tpn_tensor = torch.tensor(state_tpn, dtype=torch.float32, device=self.device).unsqueeze(0)
-                with torch.no_grad():
-                    bootstrap_value = self.critic(state_tpn_tensor).item()
+            if t + n < L:
+                bootstrap_value = pre_update_values[t + n]
                 G += discount * bootstrap_value
 
-            # Compute the critic's value for state_t.
-            state_t_tensor = torch.tensor(state_t, dtype=torch.float32, device=self.device).unsqueeze(0)
-            value_t = self.critic(state_t_tensor).item()
+            value_t = pre_update_values[t]
             advantage = G - value_t
 
-            states.append(state_t)
-            actions.append(action_t)
             targets.append(G)
             advantages.append(advantage)
 
-        # Convert lists to tensors.
+        # Convert to tensors (now includes actions)
         states_tensor = torch.tensor(np.array(states), dtype=torch.float32, device=self.device)
-        actions_tensor = torch.tensor(np.array(actions), dtype=torch.float32, device=self.device)
+        actions_tensor = torch.tensor(np.array(actions), dtype=torch.float32, device=self.device)  # Now works
         targets_tensor = torch.tensor(targets, dtype=torch.float32, device=self.device).unsqueeze(1)
         advantages_tensor = torch.tensor(advantages, dtype=torch.float32, device=self.device).unsqueeze(1)
 
@@ -92,8 +83,7 @@ class ACTrainer(AbstractTrainer):
 
         # Optional entropy bonus to encourage exploration.
         entropy = dist.entropy().mean()
-        entropy_coef = 0.01
-        actor_loss -= entropy_coef * entropy
+        actor_loss -= self.entropy_coef * entropy
 
         total_loss = actor_loss + critic_loss
 

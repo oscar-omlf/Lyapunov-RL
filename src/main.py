@@ -8,16 +8,15 @@ from util.metrics_tracker import MetricsTracker
 def env_interaction(env_str: str, config: dict, num_episodes: int) -> tuple[list, list, list]:
     """
     Interact with the environment for a given number of episodes.
-    For each episode, the agent collects transitions, updates its weights,
-    and we record:
-      - the cumulative return for that episode,
-      - the average actor loss over that episode (if any update occurred),
-      - the average critic loss over that episode.
+    Key changes:
+      - Updates occur every `n` steps (defined in config) or at episode end.
+      - Tracks losses per update (not per episode).
     """
     env = gym.make(env_str)
     obs, _ = env.reset()
 
     agent = AgentFactory.create_agent(config=config, env=env)
+    n_steps = config["n_steps"]
 
     episode_returns = []
     episode_actor_losses = []
@@ -27,38 +26,41 @@ def env_interaction(env_str: str, config: dict, num_episodes: int) -> tuple[list
         ep_return = 0.0
         ep_actor_losses = []
         ep_critic_losses = []
+        step_count = 0
         done = False
+        obs, _ = env.reset() 
 
         while not done:
             old_obs = obs
-            action = agent.policy(obs)
+            action = agent.policy(old_obs)
             obs, reward, terminated, truncated, _ = env.step(action)
             ep_return += reward
-
-            agent.add_transition((old_obs, action, reward, obs))
             done = terminated or truncated
 
-        loss = agent.update()
+            agent.add_transition((old_obs, action, reward, obs))
+            step_count += 1
 
-        if loss:
-            actor_loss, critic_loss = loss
-            ep_actor_losses.append(actor_loss)
-            ep_critic_losses.append(critic_loss)
+            if step_count % n_steps == 0 or done:
+                loss = agent.update()
+                if loss:
+                    actor_loss, critic_loss = loss
+                    ep_actor_losses.append(actor_loss)
+                    ep_critic_losses.append(critic_loss)
 
+        # Log metrics after episode ends
         episode_returns.append(ep_return)
         avg_actor_loss = np.mean(ep_actor_losses) if ep_actor_losses else 0.0
         avg_critic_loss = np.mean(ep_critic_losses) if ep_critic_losses else 0.0
         episode_actor_losses.append(avg_actor_loss)
         episode_critic_losses.append(avg_critic_loss)
 
-        obs, _ = env.reset()
-        # print(f"Episode {episode+1}: Return={ep_return:.2f}")
+        # print(f"Episode {episode+1}: Return={ep_return:.2f}, Actor Loss={avg_actor_loss:.4f}, Critic Loss={avg_critic_loss:.4f}")
 
     env.close()
     return episode_returns, episode_actor_losses, episode_critic_losses
 
 def execute_agent_runs(env_str: str, agent_str: str, num_runs: int, num_episodes: int,
-                       gamma: float, actor_lr: float, critic_lr: float) -> tuple[list, list, list]:
+                       gamma: float, actor_lr: float, critic_lr: float, step_size: int) -> tuple[list, list, list]:
     """
     Run the specified agent configuration for num_runs runs.
     Returns three lists:
@@ -75,9 +77,10 @@ def execute_agent_runs(env_str: str, agent_str: str, num_runs: int, num_episodes
 
         config = {
             "agent_str": agent_str,
-            "n_steps": 5,
             "buffer_size": 200,
             "gamma": gamma,
+            "n_steps": step_size,
+            "entropy_coef": 0.01,
             "actor_lr": actor_lr,
             "critic_lr": critic_lr,
             "device": "cuda" if torch.cuda.is_available() else "cpu"
@@ -97,10 +100,11 @@ def run_set_parameters(env_str: str, agent_str: str, tracker: MetricsTracker,
     The run's metrics are added to the tracker.
     """
     gamma, actor_lr, critic_lr = 0.99, 0.0008, 0.001
+    step_size = 5
     print(f"Default hyperparameters: Gamma={gamma}, Actor LR={actor_lr}, Critic LR={critic_lr}")
 
     returns_list, actor_losses, critic_losses = execute_agent_runs(
-        env_str, agent_str, num_runs, num_episodes, gamma, actor_lr, critic_lr
+        env_str, agent_str, num_runs, num_episodes, gamma, actor_lr, critic_lr, step_size
     )
 
     for run_returns in returns_list:
