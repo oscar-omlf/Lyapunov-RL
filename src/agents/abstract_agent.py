@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import torch
 import random
 from collections import deque
 
@@ -10,12 +11,24 @@ class ReplayBuffer:
     def push(self, transition):
         """
         Store a transition tuple (state, action, reward, next_state, done)
+        and convert each element to a tensor.
         """
-        self.buffer.append(transition)
+        state, action, reward, next_state, done = transition
+        
+        state = torch.tensor(state, dtype=torch.float)
+        # For continuous actions:
+        action = torch.tensor(action, dtype=torch.float)
+        # For discrete actions:
+        # action = torch.tensor(action, dtype=torch.long)
+        reward = torch.tensor(reward, dtype=torch.float)
+        next_state = torch.tensor(next_state, dtype=torch.float)
+        done = torch.tensor(done, dtype=torch.bool)
+        
+        self.buffer.append((state, action, reward, next_state, done))
         
     def sample(self, batch_size):
         """
-        Return a random batch of transitions
+        Return a random batch of transitions.
         """
         return random.sample(self.buffer, batch_size)
         
