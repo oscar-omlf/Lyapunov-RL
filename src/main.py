@@ -35,6 +35,15 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
                 ep_actor_losses.append(actor_loss)
                 ep_critic_losses.append(critic_loss)
 
+        # At episode end, flush any remaining transitions.
+        while True:
+            loss = agent.update(flush=True)
+            if loss is None:
+                break
+            actor_loss, critic_loss = loss
+            ep_actor_losses.append(actor_loss)
+            ep_critic_losses.append(critic_loss)
+
         episode_returns.append(ep_return)
         avg_actor_loss = np.mean(ep_actor_losses) if ep_actor_losses else 0.0
         avg_critic_loss = np.mean(ep_critic_losses) if ep_critic_losses else 0.0
@@ -43,6 +52,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
 
     env.close()
     return episode_returns, episode_actor_losses, episode_critic_losses
+
 
 def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
     agent_name = f'{config["agent_str"]}_lr{config["actor_lr"]}_{config["critic_lr"]}_gamma{config["gamma"]}_n{config["n_step"]}'
@@ -55,14 +65,14 @@ def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: i
 def main():
     env_str = "Pendulum-v1"
     config = {
-        "agent_str": "RANDOM",
+        "agent_str": "ACTOR-CRITIC",
         "actor_lr": 0.001,
         "critic_lr": 0.005,
         "gamma": 0.99,
         "n_step": 1
     }
     num_runs = 1
-    num_episodes = 500
+    num_episodes = 10
 
     tracker = MetricsTracker()
 

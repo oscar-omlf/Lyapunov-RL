@@ -47,14 +47,14 @@ class ActorCriticAgent(AbstractAgent):
         :param transition: The transition to add to the replay buffer.
         """
         state, action, reward, next_state, done = transition
-        state_t = torch.as_tensor(state, device=self.device, dtype=torch.float64)
-        action_t = torch.as_tensor(action, device=self.device, dtype=torch.float64)
-        reward_t = torch.as_tensor(reward, device=self.device, dtype=torch.float64)
-        next_state_t = torch.as_tensor(next_state, device=self.device, dtype=torch.float64)
+        state_t = torch.as_tensor(state, device=self.device, dtype=torch.float32)
+        action_t = torch.as_tensor(action, device=self.device, dtype=torch.float32)
+        reward_t = torch.as_tensor(reward, device=self.device, dtype=torch.float32)
+        next_state_t = torch.as_tensor(next_state, device=self.device, dtype=torch.float32)
         done_t = torch.as_tensor(done, device=self.device, dtype=torch.bool)
         self._replay_buffer.push((state_t, action_t, reward_t, next_state_t, done_t))
 
-    def update(self) -> None:
+    def update(self, flush: bool = False) -> None:
         """
         Perform a gradient descent step on both actor (policy) and critic (value function).
         """
@@ -67,7 +67,7 @@ class ActorCriticAgent(AbstractAgent):
         :param state: The current state of the environment.
         :return: The action to take.
         """
-        state = torch.from_numpy(state).to(device=self.device, dtype=torch.float64)  # just to make it a Tensor obj
+        state = torch.from_numpy(state).to(device=self.device, dtype=torch.float32)  # just to make it a Tensor obj
 
         action, _ = sample_two_headed_gaussian_model(self._actor_model, state)
 

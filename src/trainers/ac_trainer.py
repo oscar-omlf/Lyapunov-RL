@@ -40,107 +40,77 @@ class ACTrainer(Trainer):
         except IndexError:
             print('IndexError: n_steps is greater than buffer length')
 
-        print(f'Trajectory check!! {trajectory == trajectory_1}') # hopefully True
+        if not trajectory == trajectory_1:
+            print(f'Trajectory check!! {trajectory == trajectory_1}') # hopefully True
 
         return trajectory
 
-    def _do_single_update(self, transitions) -> tuple[float, float]:
+    def train(self, flush: bool = False):
         """
-        Perform exactly ONE update (n-step or partial) for the EARLIEST transition in 'transitions'.
-        Returns (actor_loss, critic_loss).
-
-        Steps:
-          1) Label the earliest transition as (s0,a0,...) = transitions[0]
-          2) Sum rewards for up to n steps or until done => G
-          3) If no 'done' encountered, bootstrap from V(s_{last_next})
-          4) advantage = G - V(s0)
-          5) Update critic, update actor
-          6) popleft() that earliest transition from the buffer
+        Perform exactly ONE n-step update (or a partial n-step update if flush is True)
+        for the earliest transition(s) in the current buffer.
+        
+        If flush is False, the update only occurs if there are at least n_steps transitions.
+        If flush is True, even if there are fewer than n_steps transitions,
+        a partial update is performed and the remaining transitions are then flushed.
+        
+        Returns (actor_loss, critic_loss) or None if no update occurred.
         """
+        transitions = self._trajectory()
+        total_transitions = len(transitions)
+        if not flush and total_transitions < self.n_steps:
+            return None
 
-        s0, a0, r0, s1, done0 = transitions[0]  
-
-        # Compute the return G from the earliest transition forward
+        # Use as many transitions as available (which is <= n_steps)
+        n = min(self.n_steps, total_transitions)
+        if self.n_steps < total_transitions:
+            print('n_steps is less than buffer length')
         G = 0.0
-        discount = 1.0
-        done_encountered = False
-        n_collected = 0
-        for i, (s_i, a_i, r_i, s_i1, d_i) in enumerate(transitions):
-            if i >= self.n_steps:
-                break  # we only look at up to n steps
-            G += discount * r_i.item()
-            discount *= self.gamma
-            n_collected += 1
-            if d_i.item() == 1:  # done encountered
-                done_encountered = True
+        found_terminal = False
+        for i in range(n):
+            # Each transition: (state, action, reward, next_state, done)
+            _, _, r, _, done = transitions[i]
+            G += (self.gamma ** i) * r.item()  # r is a tensor; extract scalar via .item()
+            if done.item():
+                found_terminal = True
+                n = i + 1  # Use only transitions up to terminal.
                 break
 
-        # 3) If we didn't encounter done, we bootstrap from the last 'next_state'
-        if not done_encountered:
-            # the last transition we used was transitions[n_collected-1]
-            _, _, _, last_next_state, _ = transitions[n_collected-1]
-            with torch.no_grad():
-                G += discount * self.critic_model(last_next_state).item()
+        # If we have a full n-step batch and no terminal was found, bootstrap from critic.
+        if not found_terminal and n == self.n_steps:
+            s_bootstrap = transitions[n - 1][3]  # next_state tensor from the nth transition
+            V_bootstrap = self.critic_model(s_bootstrap)
+            G += (self.gamma ** n) * V_bootstrap.item()
 
-        # 4) advantage = G - V(s0)
-        G_tens = torch.tensor([G], dtype=torch.double, device=self.device)
-        value_s0 = self.critic_model(s0)  # shape [1]
-        advantage = G_tens - value_s0
+        # Update on the earliest transition.
+        s0, a0, _, _, _ = transitions[0]
+        V_s0 = self.critic_model(s0)
+        advantage = torch.tensor(G, dtype=V_s0.dtype, device=V_s0.device) - V_s0
 
-        # 5) Update critic
-        critic_loss = advantage.pow(2).mean()
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
+        # Critic loss: MSE between target and V(s0)
+        critic_loss = advantage.pow(2)
 
-        # Update actor
-        # We call .predict(...) from your MLPMultivariateGaussian
-        dist = self.actor_model.predict(s0)  # returns a MultivariateNormal
-        log_prob_a0 = dist.log_prob(a0)
-        actor_loss = -log_prob_a0 * advantage.detach()
+        # Actor loss for continuous actions:
+        # The actor model (MLPMultivariateGaussian) returns a distribution via its predict() method.
+        distribution = self.actor_model.predict(s0)
+        log_prob = distribution.log_prob(a0)  # a0 is already a tensor
+        actor_loss = -log_prob * advantage.detach()
 
+        # Separate updates for actor and critic:
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        # 6) Remove the earliest transition from the buffer (so we don't update it again)
-        self.buffer.buffer.popleft()
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
 
-        return (actor_loss.item(), critic_loss.item())
+        # Remove used transitions from the buffer.
+        for _ in range(n):
+            self.buffer.popleft()
 
-    def train(self):
-        """
-        Called after each step (or at the end of the episode as well).
-        - If we have >= n_steps transitions and the last transition is NOT done, do exactly ONE n-step update.
-        - Else if the last transition is done => we 'drain' leftover transitions:
-            repeatedly do partial updates (one transition at a time) until the buffer is empty.
-        - Return (actor_loss, critic_loss) for the *last* update performed,
-          or None if no update was done.
-        """
-        transitions = self._trajectory()
-        if len(transitions) == 0:
-            return None  # nothing to do
+        # If flush is enabled, clear the entire buffer.
+        if flush:
+            self.buffer.clear()
 
-        # check the last transition
-        *_, last_done = transitions[-1]
-
-        # 1) CASE: if we have enough transitions (>= n_steps) and last is not done => do ONE n-step update
-        if (len(transitions) >= self.n_steps) and (last_done.item() == 0):
-            # standard n-step update for the earliest transition
-            return self._do_single_update(transitions)
-
-        # 2) CASE: if last_done = True, we know episode ended => we 'drain' leftover transitions
-        if last_done.item() == 1:
-            # We'll do repeated partial updates until the buffer is empty
-            # or until we can't do more (but typically we do until empty).
-            last_loss = None
-            while len(self.buffer) > 0:
-                transitions = self._trajectory()
-                # do a single partial update for the earliest
-                last_loss = self._do_single_update(transitions)
-                # we keep going until buffer is empty
-            return last_loss
-
-        # 3) CASE: if we have fewer than n_steps transitions and the last is not done => do nothing
-        return None
-    
+        return actor_loss.item(), critic_loss.item()

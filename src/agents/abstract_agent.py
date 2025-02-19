@@ -18,6 +18,9 @@ class ReplayBuffer:
     def clear(self):
         self.buffer.clear()
 
+    def popleft(self):
+        return self.buffer.popleft()
+
     def get_buffer_list(self):
         return list(self.buffer)
         
@@ -43,7 +46,7 @@ class AbstractAgent(ABC):
         pass
 
     @abstractmethod
-    def update(self) -> None:
+    def update(self, flush: bool = False) -> None:
         """
         Abstract method where the update rule is applied.
         """

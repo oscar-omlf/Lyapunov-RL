@@ -8,7 +8,7 @@ class RandomAgent(AbstractAgent):
     def add_transition(self, transition):
         pass
 
-    def update(self) -> None:
+    def update(self, flush: bool = False) -> None:
         pass
 
     def policy(self, state):
