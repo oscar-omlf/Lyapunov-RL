@@ -18,12 +18,10 @@ class MLP(nn.Module):
         self._layers = nn.Sequential(
             torch.nn.Linear(input_size, 128),
             torch.nn.ReLU(),
-            torch.nn.Linear(128, 32),
-            torch.nn.ReLU(),
-            torch.nn.Linear(32, output_size)
+            torch.nn.Linear(128, output_size)
         )
 
-        self.double()
+        # self.double()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

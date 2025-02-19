@@ -28,7 +28,7 @@ class MLPGaussian(TwoHeadedMLP):
         self.mean_head = torch.nn.Linear(128, 1)  # Linear layer for mean
         self.log_std_head = torch.nn.Linear(128, 1)  # log std instead of variance for numerical stability.
 
-        self.double()
+        # self.double()
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

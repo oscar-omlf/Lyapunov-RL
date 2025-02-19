@@ -20,7 +20,7 @@ class MLPMultivariateGaussian(TwoHeadedMLP):
                                                   output_size) # Linear layer for log diagonal of Cholesky decomposition
                                                                # The log is for numerical stability.
 
-        self.double()
+        # self.double()
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.layers(x)

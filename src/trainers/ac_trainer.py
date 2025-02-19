@@ -4,7 +4,6 @@ from agents.abstract_agent import ReplayBuffer
 
 from models.twoheadedmlp import TwoHeadedMLP
 from trainers.abstract_trainer import Trainer
-from util.device import fetch_device
 
 
 class ACTrainer(Trainer):
@@ -58,6 +57,10 @@ class ACTrainer(Trainer):
         """
         transitions = self._trajectory()
         total_transitions = len(transitions)
+
+        if total_transitions == 0:
+            return None
+    
         if not flush and total_transitions < self.n_steps:
             return None
 

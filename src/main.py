@@ -13,7 +13,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     episode_actor_losses = []
     episode_critic_losses = []
 
-    for _ in range(num_episodes):
+    for episode in range(num_episodes):
         ep_return = 0.0
         ep_actor_losses = []
         ep_critic_losses = []
@@ -50,12 +50,15 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
         episode_actor_losses.append(avg_actor_loss)
         episode_critic_losses.append(avg_critic_loss)
 
+        if (episode + 1) % 10 == 0:
+            print(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} | Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
+
     env.close()
     return episode_returns, episode_actor_losses, episode_critic_losses
 
 
 def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
-    agent_name = f'{config["agent_str"]}_lr{config["actor_lr"]}_{config["critic_lr"]}_gamma{config["gamma"]}_n{config["n_step"]}'
+    agent_name = f'{config["agent_str"]}_lr{config["actor_lr"]}_{config["critic_lr"]}_gamma{config["gamma"]}_n{config["n_steps"]}'
     for run in range(num_runs):
         print(f"Starting run {run+1}/{num_runs}...")
         returns, actor_losses, critic_losses = run_episode(env_str, config, num_episodes)
@@ -66,13 +69,13 @@ def main():
     env_str = "Pendulum-v1"
     config = {
         "agent_str": "ACTOR-CRITIC",
-        "actor_lr": 0.001,
-        "critic_lr": 0.005,
+        "actor_lr": 0.0001,
+        "critic_lr": 0.0005,
         "gamma": 0.99,
-        "n_step": 1
+        "n_steps": 1
     }
     num_runs = 1
-    num_episodes = 10
+    num_episodes = 500
 
     tracker = MetricsTracker()
 

@@ -58,7 +58,7 @@ class ActorCriticAgent(AbstractAgent):
         """
         Perform a gradient descent step on both actor (policy) and critic (value function).
         """
-        self._trainer.train()
+        return self._trainer.train(flush=flush)
 
     def policy(self, state) -> np.array:
         """
