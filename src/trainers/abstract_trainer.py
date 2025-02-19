@@ -1,9 +1,14 @@
 from abc import ABC, abstractmethod
 
-class AbstractTrainer(ABC):
+
+class Trainer(ABC):
+    """
+    Abstract base class for trainers responsible for performing optimization processes.
+    """
+
     @abstractmethod
-    def train(self):
+    def train(self) -> None:
         """
-        Perform a training update. Must be implemented by any concrete trainer.
+        Perform the optimization process or learning of parameters.
         """
         pass

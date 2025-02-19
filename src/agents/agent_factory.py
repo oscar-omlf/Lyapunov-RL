@@ -1,27 +1,30 @@
-from agents.random_agent import RandomAgent
+import gymnasium as gym
+
 from agents.actor_critic_agent import ActorCriticAgent
+from agents.random_agent import RandomAgent
+
 
 class AgentFactory:
     @staticmethod
     def create_agent(config, env):
-        """
-        Create an agent instance based on the provided configuration.
-        The config dictionary is updated with the environment's state_space and action_space.
-        """
-        config["state_space"] = env.observation_space
-        config["action_space"] = env.action_space
+            """
+            Create an agent instance based on the provided configuration.
+            The config dictionary is updated with the environment's state_space and action_space.
+            """
+            config["state_space"] = env.observation_space
+            config["action_space"] = env.action_space
 
-        agent_str = config.get("agent_str", "RANDOM").upper()
+            agent_str = config.get("agent_str", "RANDOM").upper()
 
-        if agent_str == "RANDOM":
-            return RandomAgent(config)
-        elif agent_str == "ACTOR-CRITIC":
-            return ActorCriticAgent(config)
-        elif agent_str == "LQR":
-            # Not implemented yet
-            pass
-        elif agent_str == "LYAPUNOV":
-            # Not implemented yet
-            pass
-        else:
-            raise ValueError(f"Unknown agent type: {agent_str}")
+            if agent_str == "RANDOM":
+                return RandomAgent(config)
+            elif agent_str == "ACTOR-CRITIC":
+                return ActorCriticAgent(config)
+            elif agent_str == "LQR":
+                # Not implemented yet
+                pass
+            elif agent_str == "LYAPUNOV":
+                # Not implemented yet
+                pass
+            else:
+                raise ValueError(f"Unknown agent type: {agent_str}")
