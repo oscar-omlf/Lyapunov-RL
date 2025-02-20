@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-import torch
-import random
+import gymnasium as gym
+
+from util.device import fetch_device
 from collections import deque
 
 class ReplayBuffer:
@@ -10,80 +11,74 @@ class ReplayBuffer:
         
     def push(self, transition):
         """
-        Store a transition tuple (state, action, reward, next_state, done)
-        and convert each element to a tensor.
+        Store a transition tuple (state, action, reward, next_state, done).
         """
-        state, action, reward, next_state, done = transition
-        
-        state = torch.tensor(state, dtype=torch.float)
-        # For continuous actions:
-        action = torch.tensor(action, dtype=torch.float)
-        # For discrete actions:
-        # action = torch.tensor(action, dtype=torch.long)
-        reward = torch.tensor(reward, dtype=torch.float)
-        next_state = torch.tensor(next_state, dtype=torch.float)
-        done = torch.tensor(done, dtype=torch.bool)
-        
-        self.buffer.append((state, action, reward, next_state, done))
-        
-    def sample(self, batch_size):
-        """
-        Return a random batch of transitions.
-        """
-        return random.sample(self.buffer, batch_size)
+        self.buffer.append(transition)
+
+    def clear(self):
+        self.buffer.clear()
+
+    def popleft(self):
+        return self.buffer.popleft()
+
+    def get_buffer_list(self):
+        return list(self.buffer)
         
     def __len__(self):
         return len(self.buffer)
 
 class AbstractAgent(ABC):
-    def __init__(self, config):
+    def __init__(self, config: dict):
+
+        self.gamma = config.get("gamma", 0.99)
+        self.state_space = config.get("state_space")
+        self.action_space = config.get("action_space")
+        self.device = fetch_device()
+        self._replay_buffer = ReplayBuffer(config.get("n_steps", 1))
+
+    @abstractmethod
+    def add_transition(self, transition):
         """
-        Initialize the agent with configuration parameters.
-        Config should be a dictionary or configuration object that includes:
-            - 'state_space'
-            - 'action_space'
-            - 'gamma' (discount factor)
-            - 'buffer_size' for the replay buffer, and any other hyperparameters.
-        
-        If 'buffer_size' is None, no replay buffer is created.
+        Abstract method to add a transition to the agent's replay buffer.
+
+        :param transition: transition to add to the replay buffer.
         """
-        self.config = config
-        buffer_size = config.get('buffer_size', 500)
-        self.replay_buffer = ReplayBuffer(buffer_size)
-    
+        pass
+
+    @abstractmethod
+    def update(self, flush: bool = False) -> None:
+        """
+        Abstract method where the update rule is applied.
+        """
+        pass
+
     @abstractmethod
     def policy(self, state):
         """
-        Given a state, compute and return an action according to the agent's policy.
-        This method replaces the 'act' method for clarity.
+        Abstract method to define the agent's policy.
+        For actor critic algorithms the output of the actor would be a probability distribution over actions.
+        For discrete actions this is simply a discrete probability distributions, describing a probability
+        for each action.
+        For continuous actions you can have some kind of continuous distribution you sample actions from.
+
+        :param state: The current state of the environment.
         """
         pass
 
     @abstractmethod
-    def update(self):
+    def save(self, file_path: str = './') -> None:
         """
-        Update the agent's parameters based on a batch of transitions sampled from the replay buffer.
+        Abstract method to save the agent's model.
+
+        :param file_path: The path to save the model.
         """
         pass
 
     @abstractmethod
-    def save(self, filepath):
+    def load(self, file_path: str = './') -> None:
         """
-        Save the model's parameters or the entire agent state to the specified filepath.
+        Abstract method to load the agent's model.
+
+        :param file_path: The path to load the model from.
         """
         pass
-
-    @abstractmethod
-    def load(self, filepath):
-        """
-        Load the model's parameters or the entire agent state from the specified filepath.
-        """
-        pass
-
-    def add_transition(self, transition):
-        """
-        Store a new transition in the replay buffer.
-        Each transition should be a tuple: (state, action, reward, next_state, done).
-        """
-        if self.replay_buffer is not None:
-            self.replay_buffer.push(transition)
