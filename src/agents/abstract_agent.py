@@ -34,7 +34,11 @@ class AbstractAgent(ABC):
         self.state_space = config.get("state_space")
         self.action_space = config.get("action_space")
         self.device = fetch_device()
-        self._replay_buffer = ReplayBuffer(config.get("n_steps", 1))
+        self.batch_size = config.get("batch_size", 1000)
+        self._replay_buffer = ReplayBuffer(capacity=self.batch_size)
+
+    def clear_buffer(self):
+        self._replay_buffer.clear()
 
     @abstractmethod
     def add_transition(self, transition):
@@ -46,7 +50,7 @@ class AbstractAgent(ABC):
         pass
 
     @abstractmethod
-    def update(self, flush: bool = False) -> None:
+    def update(self) -> None:
         """
         Abstract method where the update rule is applied.
         """

@@ -1,109 +1,91 @@
 import torch
 from torch import nn
-from agents.abstract_agent import ReplayBuffer
+import torch.nn.functional as F
 
+from agents.abstract_agent import ReplayBuffer
 from models.twoheadedmlp import TwoHeadedMLP
 from trainers.abstract_trainer import Trainer
+
+from models.sampling import log_prob_policy
 
 
 class ACTrainer(Trainer):
     def __init__(
-        self,
-        buffer: ReplayBuffer,
-        actor: TwoHeadedMLP,
+        self, 
+        buffer: ReplayBuffer, 
+        actor: TwoHeadedMLP, 
         critic: nn.Module,
-        gamma: float,
-        n_steps: int,
-        actor_lr: float,
-        critic_lr: float
+        gamma: float, 
+        n_steps: int, 
+        batch_size: int,
+        actor_lr: float, 
+        critic_lr: float, 
+        device: str
     ):
-        """
-        Initialize the Actor-Critic Trainer.
-        """
+        super().__init__()
         self.buffer = buffer
         self.actor_model = actor
         self.critic_model = critic
         self.gamma = gamma
         self.n_steps = n_steps
+        self.batch_size = batch_size
+        self.device = device
 
-        self.actor_optimizer = torch.optim.Adam(self.actor_model.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic_model.parameters(), lr=critic_lr)
+        self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
 
-    def _trajectory(self) -> tuple:
-        """
-        Sample the trajectory from the replay buffer.
-        """
-        trajectory = self.buffer.get_buffer_list()
-        try:
-            trajectory_1 = self.buffer.get_buffer_list()[-self.n_steps:]
-        except IndexError:
-            print('IndexError: n_steps is greater than buffer length')
+    def train(self):
+        transitions = self.buffer.get_buffer_list()
+        T = len(transitions)
+        if T == 0: return None
 
-        if not trajectory == trajectory_1:
-            print(f'Trajectory check!! {trajectory == trajectory_1}') # hopefully True, checking whether the buffer works as intended
+        # Extract tensors
+        states = torch.stack([t[0] for t in transitions])
+        actions = torch.stack([t[1] for t in transitions])
+        rewards = torch.stack([t[2] for t in transitions])
+        next_states = torch.stack([t[3] for t in transitions])
+        dones = torch.stack([t[4] for t in transitions])
 
-        return trajectory
+        # Compute V(s_t)
+        V_values = self.critic_model(states).squeeze()
 
-    def train(self, flush: bool = False):
-        """
-        Perform exactly ONE n-step update (or a partial n-step update if flush is True)
-        for the earliest transition(s) in the current buffer.
-        
-        If flush is False, the update only occurs if there are at least n_steps transitions.
-        If flush is True, even if there are fewer than n_steps transitions,
-        a partial update is performed and the remaining transitions are then flushed.
-        
-        Returns (actor_loss, critic_loss) or None if no update occurred.
-        """
-        transitions = self._trajectory()
-        total_transitions = len(transitions)
+        # Compute N-step returns with done handling
+        R = torch.zeros(T, device=self.device)
+        for t in range(T):
+            sum_rewards = 0.0
+            gamma_k = 1.0  # γ^0
+            for k in range(self.n_steps):
+                if t + k >= T:
+                    break
+                sum_rewards += gamma_k * rewards[t + k]
+                gamma_k *= self.gamma  # Update γ^k
 
-        if total_transitions == 0:
-            return None
-    
-        if not flush and total_transitions < self.n_steps:
-            return None
+                if dones[t + k]:
+                    break
 
-        n = min(self.n_steps, total_transitions)
-        if self.n_steps < total_transitions:
-            print('n_steps is less than buffer length')
-        G = 0.0
-        found_terminal = False
-        for i in range(n):
-            _, _, r, _, done = transitions[i]
-            G += (self.gamma ** i) * r.item()  
-            if done.item():
-                found_terminal = True
-                n = i + 1
-                break
+            # Compute V_end (0 if terminated within N steps)
+            if t + k < T and not dones[t + k]:
+                s_t_plus_k = next_states[t + k]
+                with torch.no_grad():
+                    V_end = self.critic_model(s_t_plus_k.unsqueeze(0)).squeeze()
+            else:
+                V_end = 0.0
 
-        if not found_terminal and n == self.n_steps:
-            s_bootstrap = transitions[n - 1][3]
-            V_bootstrap = self.critic_model(s_bootstrap)
-            G += (self.gamma ** n) * V_bootstrap.item()
+            R[t] = sum_rewards + gamma_k * V_end
 
-        s0, a0, _, _, _ = transitions[0]
+        # Compute losses using your existing functions
+        advantages = R - V_values.detach()
+        log_probs = log_prob_policy(self.actor_model, states, actions)
+        actor_loss = -(log_probs * advantages).sum()
+        critic_loss = 0.5 * torch.sum((R - V_values) ** 2)
 
-        # Calculate critic loss
-        V_s0 = self.critic_model(s0)
-        advantage = torch.tensor(G, dtype=V_s0.dtype, device=V_s0.device) - V_s0
-        critic_loss = advantage.pow(2)
-
-        # Calculate actor loss
-        distribution = self.actor_model.predict(s0)
-        log_prob = distribution.log_prob(a0)
-        actor_loss = -log_prob * advantage.detach()
-
-        # Updates for actor and critic:
+        # Optimize
         self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
-
         self.critic_optimizer.zero_grad()
+        actor_loss.backward()
         critic_loss.backward()
+        self.actor_optimizer.step()
         self.critic_optimizer.step()
 
-        # Remove used transitions from the buffer, necessary for flush
-        self.buffer.popleft()
-
         return actor_loss.item(), critic_loss.item()
+

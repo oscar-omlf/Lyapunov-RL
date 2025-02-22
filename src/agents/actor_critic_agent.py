@@ -22,8 +22,8 @@ class ActorCriticAgent(AbstractAgent):
         self.critic_lr = config.get("critic_lr", 5e-3)
 
         # Extract the environment dimensions
-        state_dim = config["state_space"].shape[0]
-        action_dim = config["action_space"].shape[0] # Assumes continuous action space (like Pendulum-v1)!
+        state_dim = self.state_space.shape[0]
+        action_dim = self.action_space.shape[0] # Assumes continuous action space (like Pendulum-v1)!
         
         # Initialize the actor and critic models
         self._actor_model = MLPMultivariateGaussian(input_size=state_dim, output_size=action_dim).to(device=self.device) # Remember to set to evaluation mode afterwards!!
@@ -36,8 +36,10 @@ class ActorCriticAgent(AbstractAgent):
             critic=self._critic_model,
             gamma=self.gamma,
             n_steps=self.n_steps,
+            batch_size=self.batch_size,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
+            device=self.device
         )
 
     def add_transition(self, transition: tuple) -> None:
@@ -54,11 +56,11 @@ class ActorCriticAgent(AbstractAgent):
         done_t = torch.as_tensor(done, device=self.device, dtype=torch.bool)
         self._replay_buffer.push((state_t, action_t, reward_t, next_state_t, done_t))
 
-    def update(self, flush: bool = False) -> None:
+    def update(self) -> None:
         """
         Perform a gradient descent step on both actor (policy) and critic (value function).
         """
-        return self._trainer.train(flush=flush)
+        return self._trainer.train()
 
     def policy(self, state) -> np.array:
         """
@@ -67,11 +69,11 @@ class ActorCriticAgent(AbstractAgent):
         :param state: The current state of the environment.
         :return: The action to take.
         """
-        state = torch.from_numpy(state).to(device=self.device, dtype=torch.float32)  # just to make it a Tensor obj
+        state = torch.from_numpy(state).to(device=self.device, dtype=torch.float32)
 
         action, _ = sample_two_headed_gaussian_model(self._actor_model, state)
 
-        return action.cpu().numpy()  # Put the tensor back on the CPU (if applicable) and convert to numpy array.
+        return action.cpu().numpy()
 
     def save(self, file_path='./') -> None:
         """

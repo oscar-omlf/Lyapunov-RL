@@ -28,21 +28,14 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
             done = terminated or truncated
 
             agent.add_transition((old_obs, action, reward, obs, done))
-            loss = agent.update()
 
+        if len(agent._replay_buffer) > 0:
+            loss = agent.update()
+            agent.clear_buffer()
             if loss:
                 actor_loss, critic_loss = loss
                 ep_actor_losses.append(actor_loss)
                 ep_critic_losses.append(critic_loss)
-
-        # At episode end, flush any remaining transitions.
-        while True:
-            loss = agent.update(flush=True)
-            if loss is None:
-                break
-            actor_loss, critic_loss = loss
-            ep_actor_losses.append(actor_loss)
-            ep_critic_losses.append(critic_loss)
 
         episode_returns.append(ep_return)
         avg_actor_loss = np.mean(ep_actor_losses) if ep_actor_losses else 0.0
@@ -51,7 +44,8 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
         episode_critic_losses.append(avg_critic_loss)
 
         if (episode + 1) % 10 == 0:
-            print(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} | Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
+            print(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} "
+                  f"| Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
 
     env.close()
     return episode_returns, episode_actor_losses, episode_critic_losses
@@ -69,10 +63,11 @@ def main():
     env_str = "Pendulum-v1"
     config = {
         "agent_str": "ACTOR-CRITIC",
-        "actor_lr": 0.0001,
-        "critic_lr": 0.0005,
+        "actor_lr": 0.001,
+        "critic_lr": 0.005,
         "gamma": 0.99,
-        "n_steps": 1
+        "n_steps": 1,
+        "batch_size": 100000
     }
     num_runs = 1
     num_episodes = 500
