@@ -29,7 +29,6 @@ class AbstractAgent(ABC):
         self.state_space = config.get("state_space")
         self.action_space = config.get("action_space")
         self.device = fetch_device()
-        self.batch_size = config.get("batch_size")
         self._replay_buffer = ReplayBuffer()
 
     @abstractmethod

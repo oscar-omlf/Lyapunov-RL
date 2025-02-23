@@ -7,7 +7,6 @@ from models.mlp import MLP
 from models.mlpmultivariategaussian import MLPMultivariateGaussian
 from models.sampling import sample_two_headed_gaussian_model
 from trainers.ac_trainer import ACTrainer
-from util.device import fetch_device
 
 
 class ActorCriticAgent(AbstractAgent):
@@ -36,7 +35,6 @@ class ActorCriticAgent(AbstractAgent):
             critic=self._critic_model,
             gamma=self.gamma,
             n_steps=self.n_steps,
-            batch_size=self.batch_size,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
             device=self.device
