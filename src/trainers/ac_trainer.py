@@ -87,5 +87,7 @@ class ACTrainer(Trainer):
         self.actor_optimizer.step()
         self.critic_optimizer.step()
 
+        self.buffer.clear()
+
         return actor_loss.item(), critic_loss.item()
 

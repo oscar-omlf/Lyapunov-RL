@@ -17,9 +17,9 @@ class ActorCriticAgent(AbstractAgent):
         """
         super().__init__(config)
         
-        self.n_steps = config.get("n_steps", 1)
-        self.actor_lr = config.get("actor_lr", 1e-3)
-        self.critic_lr = config.get("critic_lr", 5e-3)
+        self.n_steps = config.get("n_steps")
+        self.actor_lr = config.get("actor_lr")
+        self.critic_lr = config.get("critic_lr")
 
         # Extract the environment dimensions
         state_dim = self.state_space.shape[0]

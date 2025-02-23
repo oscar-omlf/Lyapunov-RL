@@ -31,7 +31,6 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
 
         if len(agent._replay_buffer) > 0:
             loss = agent.update()
-            agent.clear_buffer()
             if loss:
                 actor_loss, critic_loss = loss
                 ep_actor_losses.append(actor_loss)
@@ -67,7 +66,6 @@ def main():
         "critic_lr": 0.005,
         "gamma": 0.99,
         "n_steps": 1,
-        "batch_size": 100000
     }
     num_runs = 1
     num_episodes = 500

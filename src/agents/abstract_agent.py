@@ -2,17 +2,12 @@ from abc import ABC, abstractmethod
 import gymnasium as gym
 
 from util.device import fetch_device
-from collections import deque
 
 class ReplayBuffer:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.buffer = deque(maxlen=capacity)
+    def __init__(self):
+        self.buffer = []
         
     def push(self, transition):
-        """
-        Store a transition tuple (state, action, reward, next_state, done).
-        """
         self.buffer.append(transition)
 
     def clear(self):
@@ -30,15 +25,12 @@ class ReplayBuffer:
 class AbstractAgent(ABC):
     def __init__(self, config: dict):
 
-        self.gamma = config.get("gamma", 0.99)
+        self.gamma = config.get("gamma")
         self.state_space = config.get("state_space")
         self.action_space = config.get("action_space")
         self.device = fetch_device()
-        self.batch_size = config.get("batch_size", 1000)
-        self._replay_buffer = ReplayBuffer(capacity=self.batch_size)
-
-    def clear_buffer(self):
-        self._replay_buffer.clear()
+        self.batch_size = config.get("batch_size")
+        self._replay_buffer = ReplayBuffer()
 
     @abstractmethod
     def add_transition(self, transition):
