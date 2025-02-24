@@ -15,7 +15,6 @@ def sample_two_headed_gaussian_model(model: TwoHeadedMLP, state: torch.Tensor) -
     action_distribution: Distribution = model.predict(state)
     action: torch.Tensor = action_distribution.sample()
     ln_prob: torch.Tensor = action_distribution.log_prob(action)
-
     return action, ln_prob
 
 

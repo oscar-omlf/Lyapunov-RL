@@ -24,6 +24,8 @@ class MLPGaussian(TwoHeadedMLP):
         self.layers = nn.Sequential(
             torch.nn.Linear(input_size, 128),
             torch.nn.ReLU(),
+            torch.nn.Linear(128, 128),
+            torch.nn.ReLU(),
         )
         self.mean_head = torch.nn.Linear(128, 1)  # Linear layer for mean
         self.log_std_head = torch.nn.Linear(128, 1)  # log std instead of variance for numerical stability.

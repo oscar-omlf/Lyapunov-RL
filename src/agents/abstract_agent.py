@@ -25,7 +25,6 @@ class ReplayBuffer:
 class AbstractAgent(ABC):
     def __init__(self, config: dict):
 
-        self.gamma = config.get("gamma")
         self.state_space = config.get("state_space")
         self.action_space = config.get("action_space")
         self.device = fetch_device()

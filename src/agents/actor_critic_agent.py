@@ -5,6 +5,7 @@ import numpy as np
 from agents.abstract_agent import AbstractAgent
 from models.mlp import MLP
 from models.mlpmultivariategaussian import MLPMultivariateGaussian
+from models.mlpgaussian import MLPGaussian
 from models.sampling import sample_two_headed_gaussian_model
 from trainers.ac_trainer import ACTrainer
 
@@ -16,6 +17,7 @@ class ActorCriticAgent(AbstractAgent):
         """
         super().__init__(config)
         
+        self.gamma = config.get("gamma")
         self.n_steps = config.get("n_steps")
         self.actor_lr = config.get("actor_lr")
         self.critic_lr = config.get("critic_lr")
@@ -25,7 +27,8 @@ class ActorCriticAgent(AbstractAgent):
         action_dim = self.action_space.shape[0] # Assumes continuous action space (like Pendulum-v1)!
         
         # Initialize the actor and critic models
-        self._actor_model = MLPMultivariateGaussian(input_size=state_dim, output_size=action_dim).to(device=self.device) # Remember to set to evaluation mode afterwards!!
+        self._actor_model = MLPGaussian(input_size=state_dim).to(device=self.device)
+        # self._actor_model = MLPMultivariateGaussian(input_size=state_dim, output_size=action_dim).to(device=self.device)
         # output_size=1 because value function returns a scalar value.
         self._critic_model = MLP(input_size=state_dim, output_size=1).to(device=self.device)
 

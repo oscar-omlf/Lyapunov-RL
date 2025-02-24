@@ -1,7 +1,8 @@
 import gymnasium as gym
 
-from agents.actor_critic_agent import ActorCriticAgent
 from agents.random_agent import RandomAgent
+from agents.actor_critic_agent import ActorCriticAgent
+from agents.lqr_agent import LQRAgent
 
 
 class AgentFactory:
@@ -21,8 +22,7 @@ class AgentFactory:
             elif agent_str == "ACTOR-CRITIC":
                 return ActorCriticAgent(config)
             elif agent_str == "LQR":
-                # Not implemented yet
-                pass
+                return LQRAgent(config)
             elif agent_str == "LYAPUNOV":
                 # Not implemented yet
                 pass
