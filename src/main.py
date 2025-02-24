@@ -42,7 +42,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
         episode_actor_losses.append(avg_actor_loss)
         episode_critic_losses.append(avg_critic_loss)
 
-        if (episode + 1) % 1 == 0:
+        if (episode + 1) % 10 == 0:
             print(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} "
                   f"| Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
 
@@ -59,16 +59,16 @@ def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: i
         tracker.add_run_losses(agent_id=agent_name, actor_losses=actor_losses, critic_losses=critic_losses)
 
 def main():
-    env_str = "Pendulum-v1"
+    env_str = "MountainCarContinuous-v0"
     config = {
         "agent_str": "ACTOR-CRITIC",
-        "actor_lr": 0.0001,
-        "critic_lr": 0.0005,
+        "actor_lr": 0.001,
+        "critic_lr": 0.005,
         "gamma": 0.99,
-        "n_steps": 1,
+        "n_steps": 5,
     }
     num_runs = 1
-    num_episodes = 1000
+    num_episodes = 500
 
     tracker = MetricsTracker()
 
