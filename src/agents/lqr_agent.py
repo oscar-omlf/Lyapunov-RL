@@ -32,34 +32,34 @@ class LQRAgent(AbstractAgent):
         self.B = B
         
         # Cost matrices: Q = I (penalize state deviation equally) and R = 1 (penalize control effort)
-        # I used the same value as Wang, J., and Fazlyab, M. (2024) to replicate their experiment.
+        # I used the same value as Wang and Fazlyab (2024) to replicate their experiment
         Q = np.eye(2)
         R = np.eye(1)
 
         # Solve the continuous-time Algebraic Riccati Equation
-        # Equation: A^T P + P A - P B R^{-1} B^T P + Q = 0.
+        # Equation: A^T P + P A - P B R^{-1} B^T P + Q = 0
         P = solve_continuous_are(A, B, Q, R)
         self.P = P
         
         # Compute the optimal gain
-        # Gain is computed as: K = R^{-1} B^T P.
+        # Gain is computed as: K = R^{-1} B^T P
         self.K = np.linalg.inv(R) @ (B.T @ P)  # shape (1,2)
         print("LQR P matrix:", P)
         print("LQR gain K:", self.K)
 
     def add_transition(self, transition: tuple) -> None:
-        # LQR is computed offline; no transitions needed.
+        # LQR is computed offline; no transitions needed
         pass
 
     def update(self) -> None:
-        # LQR does not learn, no updates needed.
+        # LQR does not learn, no updates needed
         return None
 
     def policy(self, state) -> np.array:
         cos_theta, sin_theta, theta_dot = state
         theta = np.arctan2(sin_theta, cos_theta)
         
-        # Convert theta so that 0 corresponds to the upright position.
+        # Convert theta so that 0 corresponds to the upright position
         if theta < 0:
             theta += 2 * np.pi
         theta_error = theta
