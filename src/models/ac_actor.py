@@ -5,22 +5,14 @@ from torch.distributions import Normal
 from models.twoheadedmlp import TwoHeadedMLP
 
 
-class MLPGaussian(TwoHeadedMLP):
-    """
-    A multilayer perceptron with two output heads representing a Gaussian distribution.
-    This neural network outputs a Gaussian distribution, where one head is for the mean and the other
-    is for the variance.
-    NOTE: This neural network should be equivalent o the Multivariate Gaussian
-    variant when the output dimension is 1. I have included this class for educational purposes.
-    """
-
+class ACActor(TwoHeadedMLP):
     def __init__(self, input_size: int):
         """
         Initialize the MLP with two output heads.
 
         :param input_size: Number of input features.
         """
-        super(MLPGaussian, self).__init__()
+        super(ACActor, self).__init__()
         self.layers = nn.Sequential(
             torch.nn.Linear(input_size, 128),
             torch.nn.ReLU(),

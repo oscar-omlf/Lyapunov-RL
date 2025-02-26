@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class MLP(nn.Module):
+class ACCritic(nn.Module):
     """
     Simple Multi-layer perceptron model.
     """
@@ -14,7 +14,7 @@ class MLP(nn.Module):
         :param input_size: Number of input features.
         :param output_size: Number of output features.
         """
-        super(MLP, self).__init__()
+        super(ACCritic, self).__init__()
         self._layers = nn.Sequential(
             torch.nn.Linear(input_size, 256),
             torch.nn.ReLU(),

@@ -3,8 +3,8 @@ import torch
 import numpy as np
 
 from agents.abstract_agent import AbstractAgent
-from models.mlp import MLP
-from models.mlpgaussian import MLPGaussian
+from models.ac_critic import ACCritic
+from models.ac_actor import ACActor
 from models.sampling import sample_two_headed_gaussian_model
 from trainers.ac_trainer import ACTrainer
 
@@ -26,10 +26,10 @@ class ActorCriticAgent(AbstractAgent):
         action_dim = self.action_space.shape[0] # Assumes continuous action space (like Pendulum-v1)!
         
         # Initialize the actor and critic models
-        self._actor_model = MLPGaussian(input_size=state_dim).to(device=self.device)
+        self._actor_model = ACActor(input_size=state_dim).to(device=self.device)
         # self._actor_model = MLPMultivariateGaussian(input_size=state_dim, output_size=action_dim).to(device=self.device)
         # output_size=1 because value function returns a scalar value.
-        self._critic_model = MLP(input_size=state_dim, output_size=1).to(device=self.device)
+        self._critic_model = ACCritic(input_size=state_dim, output_size=1).to(device=self.device)
 
         self._trainer = ACTrainer(
             buffer=self._replay_buffer,
