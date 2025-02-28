@@ -3,6 +3,7 @@ import gymnasium as gym
 from agents.random_agent import RandomAgent
 from agents.actor_critic_agent import ActorCriticAgent
 from agents.lqr_agent import LQRAgent
+from agents.lyapunov_agent import LyapunovACAgent
 
 
 class AgentFactory:
@@ -23,8 +24,7 @@ class AgentFactory:
                 return ActorCriticAgent(config)
             elif agent_str == "LQR":
                 return LQRAgent(config)
-            elif agent_str == "LYAPUNOV":
-                # Not implemented yet
-                pass
+            elif agent_str == "LYAPUNOV-AC":
+                return LyapunovACAgent(config)
             else:
                 raise ValueError(f"Unknown agent type: {agent_str}")
