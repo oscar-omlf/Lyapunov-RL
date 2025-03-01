@@ -1,5 +1,5 @@
+import os
 import numpy as np
-from scipy.linalg import solve_continuous_are
 import pickle
 from agents.abstract_agent import AbstractAgent
 
@@ -38,7 +38,7 @@ class LQRAgent(AbstractAgent):
 
         # Solve the continuous-time Algebraic Riccati Equation
         # Equation: A^T P + P A - P B R^{-1} B^T P + Q = 0
-        P = solve_continuous_are(A, B, Q, R)
+        P = self.solve_continuous_are(A, B, Q, R)
         self.P = P
         
         # Compute the optimal gain
@@ -72,6 +72,7 @@ class LQRAgent(AbstractAgent):
         return np.array([u], dtype=np.float32)
 
     def save(self, file_path: str = '../saved_models/') -> None:
+        os.makedirs(file_path, exist_ok=True)
         with open(file_path + "lqr_agent.pkl", "wb") as f:
             pickle.dump({
                 'K': self.K,
@@ -91,3 +92,50 @@ class LQRAgent(AbstractAgent):
             self.P = data['P']
             self.g = data['g']
             self.l = data['l']
+
+    def solve_continuous_are(self, A, B, Q, R):
+        """
+        Solve the continuous-time algebraic Riccati equation (CARE):
+        A^T P + P A - P B R^{-1} B^T P + Q = 0
+        using an eigenvalue method.
+        
+        Parameters:
+            A (ndarray): System matrix (n x n).
+            B (ndarray): Input matrix (n x m).
+            Q (ndarray): State cost matrix (n x n), should be symmetric positive semi-definite.
+            R (ndarray): Control cost matrix (m x m), should be symmetric positive definite.
+        
+        Returns:
+            P (ndarray): The unique symmetric positive semi-definite solution to the CARE.
+        """
+        n = A.shape[0]
+        R_inv = np.linalg.inv(R)
+        
+        # Form the Hamiltonian matrix
+        H = np.block([[A, -B @ R_inv @ B.T],
+                    [-Q, -A.T]])
+        
+        # Compute eigenvalues and eigenvectors of the Hamiltonian
+        eigenvalues, eigenvectors = np.linalg.eig(H)
+        
+        # Identify the indices of eigenvalues with negative real parts
+        stable_indices = np.where(np.real(eigenvalues) < 0)[0]
+        
+        if len(stable_indices) != n:
+            raise ValueError("The number of stable eigenvalues does not equal the system dimension n.")
+        
+        # Extract the eigenvectors corresponding to the stable eigenvalues
+        stable_eigenvectors = eigenvectors[:, stable_indices]
+        
+        # Partition the eigenvectors into two n x n blocks: X (top half) and Y (bottom half)
+        X = stable_eigenvectors[:n, :]
+        Y = stable_eigenvectors[n:, :]
+        
+        # Ensure X is invertible; if not, numerical issues have occurred
+        if np.linalg.matrix_rank(X) < n:
+            raise np.linalg.LinAlgError("The matrix X is not invertible.")
+        
+        # Compute the solution P = Y * inv(X)
+        P = np.real(Y @ np.linalg.inv(X))
+        
+        return P
