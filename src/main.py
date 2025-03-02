@@ -7,7 +7,7 @@ from util.metrics_tracker import MetricsTracker
 from util.compare_doa import compare_doa
 
 
-def show_last_episoed(env_str: str, agent: AbstractAgent):
+def show_last_episode(env_str: str, agent: AbstractAgent):
     env = gym.make(env_str, render_mode="human", )
 
     done = False
@@ -65,8 +65,8 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     if config.get("save_models"):
         agent.save()
 
-    if config.get("show_last_episoed", False):
-        show_last_episoed(env_str, agent)
+    if config.get("show_last_episode", False):
+        show_last_episode(env_str, agent)
 
     env.close()
     return episode_returns, episode_actor_losses, episode_critic_losses
@@ -75,8 +75,10 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
 def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
     if config["agent_str"] == "LQR":
         agent_name = "LQR"
-    else:
+    elif config["agent_str"] == "ACTOR-CRITIC":
         agent_name = f'{config["agent_str"]}_lr{config["actor_lr"]}_{config["critic_lr"]}_gamma{config["gamma"]}_n{config["n_steps"]}'
+    else:
+        agent_name = f'{config["agent_str"]}_lr{config["actor_lr"]}_{config.get("alpha", 0.1)}'
     
     print(agent_name)
 
@@ -86,30 +88,33 @@ def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: i
         tracker.add_run_returns(agent_id=agent_name, returns=returns)
         tracker.add_run_losses(agent_id=agent_name, actor_losses=actor_losses, critic_losses=critic_losses)
  
+
 def main():
     env_str = "Pendulum-v1"
     config_ac = {
         "agent_str": "ACTOR-CRITIC",
-        "actor_lr": 0.0005,
+        "actor_lr": 0.005,
         "critic_lr": 0.009,
         "gamma": 0.9,
         "n_steps": 5,
-        "save_models": False,
-        "show_last_episoed": True,
+        "max_action": 2.0,
+        "save_models": True,
+        "show_last_episode": True,
     }
+
     config_lqr = {
         "agent_str": "LQR",
         "g": 10.0,
-        "save_models": False,
-        "show_last_episoed": False,
+        "save_models": True,
+        "show_last_episode": False,
     }
     num_runs = 1
     num_episodes = 500
 
     tracker = MetricsTracker()
 
-    train_agent(env_str, config_ac, tracker, num_runs, num_episodes)
-    # train_agent(env_str, config_lqr, tracker, num_runs, num_episodes)
+    # train_agent(env_str, config_ac, tracker, num_runs, num_episodes)
+    train_agent(env_str, config_lqr, tracker, num_runs, num_episodes)
     
     tracker.plot_split()
 

@@ -4,6 +4,8 @@ from torch.distributions import Normal
 
 from models.twoheadedmlp import TwoHeadedMLP
 
+LOG_SIG_MAX = 2
+LOG_SIG_MIN = -20
 
 class ACActor(TwoHeadedMLP):
     def __init__(self, input_size: int):
@@ -14,13 +16,11 @@ class ACActor(TwoHeadedMLP):
         """
         super(ACActor, self).__init__()
         self.layers = nn.Sequential(
-            torch.nn.Linear(input_size, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 128),
+            torch.nn.Linear(input_size, 256),
             torch.nn.ReLU(),
         )
-        self.mean_head = torch.nn.Linear(128, 1)  # Linear layer for mean
-        self.log_std_head = torch.nn.Linear(128, 1)  # log std instead of variance for numerical stability.
+        self.mean_head = torch.nn.Linear(256, 1)  # Linear layer for mean
+        self.log_std_head = torch.nn.Linear(256, 1)  # log std instead of variance for numerical stability.
 
         # self.double()
 
@@ -35,6 +35,7 @@ class ACActor(TwoHeadedMLP):
         features = self.layers(x)
         mean = self.mean_head(features)
         log_std = self.log_std_head(features)
+        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
         return mean, log_std
 
     def predict(self, x: torch.Tensor) -> torch.distributions.Distribution:
