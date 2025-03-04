@@ -4,7 +4,7 @@ import numpy as np
 from agents.abstract_agent import AbstractAgent
 from models.lyapunov_actor import LyapunovActor
 from models.lyapunov_critic import LyapunovCritic
-from trainers.lyapunov_trainer import LACTrainer
+from src.trainers.lyapunov_ac_trainer import LyapunovACTrainer
 from models.sampling import sample_two_headed_gaussian_model
 
 
@@ -35,7 +35,7 @@ class LyapunovACAgent(AbstractAgent):
         dynamics_fn = config.get("dynamics_fn")
         r2_bounds = config.get("R2_bounds")
 
-        self._trainer = LACTrainer(
+        self._trainer = LyapunovACTrainer(
             buffer=self._replay_buffer,
             actor=self._actor_model,
             critic=self._critic_model,
