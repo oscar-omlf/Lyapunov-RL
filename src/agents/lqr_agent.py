@@ -24,17 +24,17 @@ class LQRAgent(AbstractAgent):
         #
         # Therefore, the system matrices are:
         A = np.array([[0, 1],
-                      [(self.g/self.l), 0]])  # For g=10, l=1, A = [[0,1], [-10,0]]
+                      [(3 * self.g) / (2 * self.l), 0]])  # For g=10, l=1, A = [[0,1], [-10,0]]
         B = np.array([[0],
-                      [1/(self.m * self.l**2)]])  # For m=1, l=1, B = [[0], [1]]
+                      [3 / (self.m * self.l**2)]])  # For m=1, l=1, B = [[0], [1]]
         
         self.A = A
         self.B = B
         
         # Cost matrices: Q = I (penalize state deviation equally) and R = 1 (penalize control effort)
         # I used the same value as Wang and Fazlyab (2024) to replicate their experiment
-        Q = np.eye(2)
-        R = np.eye(1)
+        Q = config.get("Q", np.eye(2))
+        R = config.get("R", np.eye(1))
 
         # Solve the continuous-time Algebraic Riccati Equation
         # Equation: A^T P + P A - P B R^{-1} B^T P + Q = 0
@@ -58,16 +58,10 @@ class LQRAgent(AbstractAgent):
     def policy(self, state) -> np.array:
         cos_theta, sin_theta, theta_dot = state
         theta = np.arctan2(sin_theta, cos_theta)
-        
-        # Convert theta so that 0 corresponds to the upright position
-        if theta < 0:
-            theta += 2 * np.pi
-        theta_error = theta
-        
-        x = np.array([theta_error, theta_dot])
+
+        x = np.array([theta, theta_dot])
         u = -float(self.K @ x)
 
-        # Clamp to the action space [-2, 2]        
         u = np.clip(u, -2.0, 2.0)
         return np.array([u], dtype=np.float32)
 
@@ -139,3 +133,13 @@ class LQRAgent(AbstractAgent):
         P = np.real(Y @ np.linalg.inv(X))
         
         return P
+
+    def ellipse_area(self, c=1.0):
+        """
+        Returns area of the ellipse { x : x^T P x <= c } in 2D.
+        The formula is pi * c / sqrt(det(P)), assuming P is positive-definite.
+        """
+        detP = np.linalg.det(self.P)
+        if detP <= 0:
+            return 0.0
+        return np.pi * c / np.sqrt(detP)

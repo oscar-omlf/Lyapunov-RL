@@ -27,6 +27,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     episode_returns = []
     episode_actor_losses = []
     episode_critic_losses = []
+    total_stab = 0
 
     for episode in range(num_episodes):
         ep_return = 0.0
@@ -34,6 +35,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
         ep_critic_losses = []
         done = False
         obs, _ = env.reset() 
+
 
         while not done:
             old_obs = obs
@@ -52,6 +54,12 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
                 ep_actor_losses.append(actor_loss)
                 ep_critic_losses.append(critic_loss)
 
+        cos_theta, sin_theta, theta_dot = old_obs
+        theta = np.arctan2(sin_theta, cos_theta)
+
+        if abs(theta) < 0.3 * np.pi:
+            total_stab += 1
+
         episode_returns.append(ep_return)
         avg_actor_loss = np.mean(ep_actor_losses) if ep_actor_losses else 0.0
         avg_critic_loss = np.mean(ep_critic_losses) if ep_critic_losses else 0.0
@@ -62,6 +70,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
             print(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} "
                   f"| Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
 
+    print('Total stabilized: ', total_stab)
     if config.get("save_models"):
         agent.save()
 
@@ -105,6 +114,8 @@ def main():
     config_lqr = {
         "agent_str": "LQR",
         "g": 10.0,
+        "Q": np.diag([0.001, 0.001]),
+        "R": np.array([[0.0001]]),
         "save_models": True,
         "show_last_episode": False,
     }
