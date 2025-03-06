@@ -1,9 +1,10 @@
 import threading
 from collections import defaultdict
 import numpy as np
-
 from matplotlib import pyplot as plt
+
 from .welford import Welford
+
 
 class MetricsTracker:
     """
@@ -96,8 +97,7 @@ class MetricsTracker:
         """
         Plot the per-episode metrics in a matplotlib figure with two subplots.
         The top subplot displays losses (actor and critic for each agent) and the
-        bottom subplot displays returns. The standard error is shown as a shaded region,
-        just like in your original script.
+        bottom subplot displays returns. The standard error is shown as a shaded region.
         """
         with self._lock:
             fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 8))
@@ -183,6 +183,39 @@ class MetricsTracker:
                                  np.array(means) + np.array(ses),
                                  alpha=0.2)
             plt.title('Return History')
+            plt.xlabel('Episodes')
+            plt.ylabel('Average Return')
+            plt.legend(loc='best', fontsize='medium')
+            plt.tight_layout()
+            plt.show()
+
+    def plot_top_10_agents(self) -> None:
+        """
+        Plot the return histories for the top 10 agents based on the final episode's average return.
+        """
+        with self._lock:
+            # Calculate each agent's final episode average return.
+            agent_final_returns = {}
+            for agent_id, ep_dict in self._returns.items():
+                final_ep = max(ep_dict.keys())
+                aggregator = ep_dict[final_ep]
+                mean, _ = aggregator.get_curr_mean_variance()
+                agent_final_returns[agent_id] = mean
+
+            # Select the top 10 agents.
+            top_agents = sorted(agent_final_returns.items(), key=lambda x: x[1], reverse=True)[:10]
+            top_agent_ids = [agent_id for agent_id, _ in top_agents]
+
+            # Plot return histories for the top agents.
+            plt.figure(figsize=(15, 6))
+            for agent_id in top_agent_ids:
+                episodes, means, ses = self.get_avg_returns(agent_id)
+                plt.plot(episodes, means, label=f'{agent_id} Returns')
+                plt.fill_between(episodes,
+                                 np.array(means) - np.array(ses),
+                                 np.array(means) + np.array(ses),
+                                 alpha=0.2)
+            plt.title('Top 10 Agents Return History')
             plt.xlabel('Episodes')
             plt.ylabel('Average Return')
             plt.legend(loc='best', fontsize='medium')

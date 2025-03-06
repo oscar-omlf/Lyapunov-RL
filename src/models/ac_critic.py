@@ -3,33 +3,18 @@ import torch.nn as nn
 
 
 class ACCritic(nn.Module):
-    """
-    Simple Multi-layer perceptron model.
-    """
-
-    def __init__(self, input_size: int, output_size: int):
-        """
-        Multi-layer perceptron initialization.
-
-        :param input_size: Number of input features.
-        :param output_size: Number of output features.
-        """
+    def __init__(self, input_size, hidden_sizes=(64,64)):
         super(ACCritic, self).__init__()
-        self._layers = nn.Sequential(
-            torch.nn.Linear(input_size, 256),
-            torch.nn.ReLU(),
-            torch.nn.Linear(256, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, output_size)
-        )
+        self.dims = [input_size] + list(hidden_sizes) + [1]
+        layers = []
+        prev = input_size
+        for h in hidden_sizes:
+            layers.append(nn.Linear(prev, h))
+            layers.append(nn.ReLU())
+            prev = h
+        layers.append(nn.Linear(prev, 1))
+        layers.append(nn.Sigmoid())
+        self.model = nn.Sequential(*layers)
 
-        # self.double()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the multi-layer perceptron.
-
-        :param x: Input tensor of shape (batch_size, input_size).
-        :return: Output tensor of shape (batch_size, output_size).
-        """
-        return self._layers(x)
+    def forward(self, x):
+        return self.model(x)

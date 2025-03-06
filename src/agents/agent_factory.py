@@ -20,7 +20,7 @@ class AgentFactory:
 
             if agent_str == "RANDOM":
                 return RandomAgent(config)
-            elif agent_str == "ACTOR-CRITIC":
+            elif agent_str == "AC":
                 return ActorCriticAgent(config)
             elif agent_str == "LQR":
                 return LQRAgent(config)
