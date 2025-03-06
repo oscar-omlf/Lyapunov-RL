@@ -1,3 +1,4 @@
+import os
 import threading
 from collections import defaultdict
 import numpy as np
@@ -221,3 +222,64 @@ class MetricsTracker:
             plt.legend(loc='best', fontsize='medium')
             plt.tight_layout()
             plt.show()
+
+    def save_top10_plots(self, folder: str = "plots") -> None:
+        """
+        Save the top 10 agents' return history and combined loss (actor and critic)
+        history plots as PNG files in the specified folder. The top 10 agents are selected
+        based on the final episode's average return.
+        """
+        os.makedirs(folder, exist_ok=True)
+        with self._lock:
+            # Determine top 10 agents based on final return.
+            agent_final_returns = {}
+            for agent_id, ep_dict in self._returns.items():
+                final_ep = max(ep_dict.keys())
+                aggregator = ep_dict[final_ep]
+                mean, _ = aggregator.get_curr_mean_variance()
+                agent_final_returns[agent_id] = mean
+
+            top_agents = sorted(agent_final_returns.items(), key=lambda x: x[1], reverse=True)[:10]
+            top_agent_ids = [agent_id for agent_id, _ in top_agents]
+
+            # Save Top 10 Returns Plot.
+            fig_returns, ax_returns = plt.subplots(figsize=(15, 6))
+            for agent_id in top_agent_ids:
+                episodes, means, ses = self.get_avg_returns(agent_id)
+                ax_returns.plot(episodes, means, label=f'{agent_id} Returns')
+                ax_returns.fill_between(episodes,
+                                        np.array(means) - np.array(ses),
+                                        np.array(means) + np.array(ses),
+                                        alpha=0.2)
+            ax_returns.set_title('Top 10 Agents Return History')
+            ax_returns.set_xlabel('Episodes')
+            ax_returns.set_ylabel('Average Return')
+            ax_returns.legend(loc='best', fontsize='medium')
+            fig_returns.tight_layout()
+            fig_returns.savefig(os.path.join(folder, "top10_returns.png"))
+            plt.close(fig_returns)
+
+            # Save Combined Top 10 Losses Plot (Actor and Critic together).
+            fig_losses, ax_losses = plt.subplots(figsize=(15, 6))
+            for agent_id in top_agent_ids:
+                # Plot Actor Losses.
+                episodes_actor, means_actor, ses_actor = self.get_avg_actor_losses(agent_id)
+                ax_losses.plot(episodes_actor, means_actor, label=f'{agent_id} Actor Loss')
+                ax_losses.fill_between(episodes_actor,
+                                         np.array(means_actor) - np.array(ses_actor),
+                                         np.array(means_actor) + np.array(ses_actor),
+                                         alpha=0.2)
+                # Plot Critic Losses.
+                episodes_critic, means_critic, ses_critic = self.get_avg_critic_losses(agent_id)
+                ax_losses.plot(episodes_critic, means_critic, label=f'{agent_id} Critic Loss')
+                ax_losses.fill_between(episodes_critic,
+                                         np.array(means_critic) - np.array(ses_critic),
+                                         np.array(means_critic) + np.array(ses_critic),
+                                         alpha=0.2)
+            ax_losses.set_title('Top 10 Agents Loss History (Actor & Critic)')
+            ax_losses.set_xlabel('Episodes')
+            ax_losses.set_ylabel('Average Loss')
+            ax_losses.legend(loc='best', fontsize='medium')
+            fig_losses.tight_layout()
+            fig_losses.savefig(os.path.join(folder, "top10_losses.png"))
+            plt.close(fig_losses)
