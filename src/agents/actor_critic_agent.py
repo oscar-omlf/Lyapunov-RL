@@ -5,7 +5,7 @@ import numpy as np
 from agents.abstract_agent import AbstractAgent
 from models.ac_critic import ACCritic
 from models.ac_actor import ACActor
-from models.sampling import sample_two_headed_gaussian_model
+from src.util.sampling import sample_two_headed_gaussian_model
 from trainers.ac_trainer import ACTrainer
 
 
