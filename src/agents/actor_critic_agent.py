@@ -1,4 +1,4 @@
-import gymnasium as gym
+import os
 import torch
 import numpy as np
 
@@ -85,8 +85,9 @@ class ActorCriticAgent(AbstractAgent):
 
         :param file_path: The directory path to save the models.
         """
-        torch.save(self._actor_model.state_dict(), file_path + "actor_model.pth")
-        torch.save(self._critic_model.state_dict(), file_path + "critic_model.pth")
+        os.makedirs(file_path, exist_ok=True)
+        torch.save(self._actor_model.state_dict(), file_path + "ac_actor_model.pth")
+        torch.save(self._critic_model.state_dict(), file_path + "ac_critic_model.pth")
 
     def load(self, file_path='../saved_models/') -> None:
         """
@@ -94,8 +95,8 @@ class ActorCriticAgent(AbstractAgent):
 
         :param file_path: The directory path to load the models from.
         """
-        self._actor_model.load_state_dict(torch.load(file_path + "actor_model.pth"))
-        self._critic_model.load_state_dict(torch.load(file_path + 'critic_model.pth'))
+        self._actor_model.load_state_dict(torch.load(file_path + "ac_actor_model.pth", weights_only=True))
+        self._critic_model.load_state_dict(torch.load(file_path + "ac_critic_model.pth"))
 
 
     def compute_lyapunov(self, points: np.ndarray) -> np.ndarray:

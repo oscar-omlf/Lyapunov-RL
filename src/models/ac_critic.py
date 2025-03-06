@@ -16,5 +16,5 @@ class ACCritic(nn.Module):
         layers.append(nn.Sigmoid())
         self.model = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)

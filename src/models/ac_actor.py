@@ -19,7 +19,7 @@ class ACActor(TwoHeadedMLP):
         self.mean_head = nn.Linear(prev_dim, action_dim)
         self.log_std_head = nn.Linear(prev_dim, action_dim)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.layers(x)
         mean = self.mean_head(features)
         log_std = self.log_std_head(features)

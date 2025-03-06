@@ -1,5 +1,5 @@
+import os
 import numpy as np
-from scipy.linalg import solve_continuous_are
 import pickle
 from agents.abstract_agent import AbstractAgent
 
@@ -24,21 +24,21 @@ class LQRAgent(AbstractAgent):
         #
         # Therefore, the system matrices are:
         A = np.array([[0, 1],
-                      [(self.g/self.l), 0]])  # For g=10, l=1, A = [[0,1], [-10,0]]
+                      [(3 * self.g) / (2 * self.l), 0]])  # For g=10, l=1, A = [[0,1], [-10,0]]
         B = np.array([[0],
-                      [1/(self.m * self.l**2)]])  # For m=1, l=1, B = [[0], [1]]
+                      [3 / (self.m * self.l**2)]])  # For m=1, l=1, B = [[0], [1]]
         
         self.A = A
         self.B = B
         
         # Cost matrices: Q = I (penalize state deviation equally) and R = 1 (penalize control effort)
         # I used the same value as Wang and Fazlyab (2024) to replicate their experiment
-        Q = np.eye(2)
-        R = np.eye(1)
+        Q = config.get("Q", np.eye(2))
+        R = config.get("R", np.eye(1))
 
         # Solve the continuous-time Algebraic Riccati Equation
         # Equation: A^T P + P A - P B R^{-1} B^T P + Q = 0
-        P = solve_continuous_are(A, B, Q, R)
+        P = self.solve_continuous_are(A, B, Q, R)
         self.P = P
         
         # Compute the optimal gain
@@ -58,20 +58,15 @@ class LQRAgent(AbstractAgent):
     def policy(self, state) -> np.array:
         cos_theta, sin_theta, theta_dot = state
         theta = np.arctan2(sin_theta, cos_theta)
-        
-        # Convert theta so that 0 corresponds to the upright position
-        if theta < 0:
-            theta += 2 * np.pi
-        theta_error = theta
-        
-        x = np.array([theta_error, theta_dot])
+
+        x = np.array([theta, theta_dot])
         u = -float(self.K @ x)
 
-        # Clamp to the action space [-2, 2]        
         u = np.clip(u, -2.0, 2.0)
         return np.array([u], dtype=np.float32)
 
     def save(self, file_path: str = '../saved_models/') -> None:
+        os.makedirs(file_path, exist_ok=True)
         with open(file_path + "lqr_agent.pkl", "wb") as f:
             pickle.dump({
                 'K': self.K,
@@ -91,3 +86,60 @@ class LQRAgent(AbstractAgent):
             self.P = data['P']
             self.g = data['g']
             self.l = data['l']
+
+    def solve_continuous_are(self, A, B, Q, R):
+        """
+        Solve the continuous-time algebraic Riccati equation (CARE):
+        A^T P + P A - P B R^{-1} B^T P + Q = 0
+        using an eigenvalue method.
+        
+        Parameters:
+            A (ndarray): System matrix (n x n).
+            B (ndarray): Input matrix (n x m).
+            Q (ndarray): State cost matrix (n x n), should be symmetric positive semi-definite.
+            R (ndarray): Control cost matrix (m x m), should be symmetric positive definite.
+        
+        Returns:
+            P (ndarray): The unique symmetric positive semi-definite solution to the CARE.
+        """
+        n = A.shape[0]
+        R_inv = np.linalg.inv(R)
+        
+        # Form the Hamiltonian matrix
+        H = np.block([[A, -B @ R_inv @ B.T],
+                    [-Q, -A.T]])
+        
+        # Compute eigenvalues and eigenvectors of the Hamiltonian
+        eigenvalues, eigenvectors = np.linalg.eig(H)
+        
+        # Identify the indices of eigenvalues with negative real parts
+        stable_indices = np.where(np.real(eigenvalues) < 0)[0]
+        
+        if len(stable_indices) != n:
+            raise ValueError("The number of stable eigenvalues does not equal the system dimension n.")
+        
+        # Extract the eigenvectors corresponding to the stable eigenvalues
+        stable_eigenvectors = eigenvectors[:, stable_indices]
+        
+        # Partition the eigenvectors into two n x n blocks: X (top half) and Y (bottom half)
+        X = stable_eigenvectors[:n, :]
+        Y = stable_eigenvectors[n:, :]
+        
+        # Ensure X is invertible; if not, numerical issues have occurred
+        if np.linalg.matrix_rank(X) < n:
+            raise np.linalg.LinAlgError("The matrix X is not invertible.")
+        
+        # Compute the solution P = Y * inv(X)
+        P = np.real(Y @ np.linalg.inv(X))
+        
+        return P
+
+    def ellipse_area(self, c=1.0):
+        """
+        Returns area of the ellipse { x : x^T P x <= c } in 2D.
+        The formula is pi * c / sqrt(det(P)), assuming P is positive-definite.
+        """
+        detP = np.linalg.det(self.P)
+        if detP <= 0:
+            return 0.0
+        return np.pi * c / np.sqrt(detP)

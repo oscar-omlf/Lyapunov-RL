@@ -8,13 +8,15 @@ from agents.lyapunov_agent import LyapunovACAgent
 
 class AgentFactory:
     @staticmethod
-    def create_agent(config, env):
+    def create_agent(config, env = None):
             """
             Create an agent instance based on the provided configuration.
             The config dictionary is updated with the environment's state_space and action_space.
             """
-            config["state_space"] = env.observation_space
-            config["action_space"] = env.action_space
+
+            if env is not None:
+                config["state_space"] = env.observation_space
+                config["action_space"] = env.action_space
 
             agent_str = config.get("agent_str", "RANDOM").upper()
 
