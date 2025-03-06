@@ -156,7 +156,6 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
             f"c{'-'.join(map(str, critic_hidden_sizes))}"
         )
 
-
         print(f'Training agent: {agent_id}')
 
         # Run a Single Training Run
