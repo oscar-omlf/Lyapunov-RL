@@ -1,4 +1,4 @@
-# Utility functions below, assuming the above model is used for approximating a policy.
+import numpy as np
 import torch
 from models.mlpmultivariategaussian import TwoHeadedMLP
 from torch.distributions import Distribution
@@ -30,3 +30,19 @@ def log_prob_policy(model: TwoHeadedMLP, state: torch.Tensor, action: torch.Tens
     distribution: Distribution = model.predict(state)
 
     return distribution.log_prob(action)
+
+
+def sample_in_region(num_samples: int, lb: np.ndarray, ub: np.ndarray) -> np.ndarray:
+    return np.random.uniform(lb, ub, size=(num_samples, lb.shape[0]))
+
+
+def sample_out_of_region(num_samples: int, lb: np.ndarray, ub: np.ndarray, scale: float = 2.0) -> np.ndarray:
+    x = np.random.uniform(-1, 1, size=(num_samples, lb.shape[0]))
+    # For each sample, compute the maximum ratio: |x_i| / (ub_i * scale)
+    ratios = np.max(np.abs(x) / (ub * scale), axis=1, keepdims=True)
+    # Scale the sample so that at least one coordinate is at the boundary
+    x = x / ratios
+    # Add small noise in the same sign direction to push samples outside
+    noise = np.random.uniform(0, 0.5, size=x.shape)
+    x = x + np.sign(x) * noise
+    return x
