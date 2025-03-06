@@ -5,15 +5,12 @@ import numpy as np
 from agents.abstract_agent import AbstractAgent
 from models.ac_critic import ACCritic
 from models.ac_actor import ACActor
-from src.util.sampling import sample_two_headed_gaussian_model
+from util.sampling import sample_two_headed_gaussian_model
 from trainers.ac_trainer import ACTrainer
 
 
 class ActorCriticAgent(AbstractAgent):
     def __init__(self, config: dict):
-        """
-        Initialize the n-step actor-critic agent.
-        """
         super().__init__(config)
         
         self.gamma = config.get("gamma")
@@ -21,15 +18,21 @@ class ActorCriticAgent(AbstractAgent):
         self.actor_lr = config.get("actor_lr")
         self.critic_lr = config.get("critic_lr")
 
-        # Extract the environment dimensions
+        # Extract environment dimensions
         state_dim = self.state_space.shape[0]
-        action_dim = self.action_space.shape[0] # Assumes continuous action space (like Pendulum-v1)!
+        action_dim = self.action_space.shape[0]
+
+        # Get architecture hyperparameters from config
+        actor_hidden_sizes = config.get("actor_hidden_sizes", (64, 64))
+        critic_hidden_sizes = config.get("critic_hidden_sizes", (64, 64))
         
-        # Initialize the actor and critic models
-        self._actor_model = ACActor(input_size=state_dim).to(device=self.device)
-        # self._actor_model = MLPMultivariateGaussian(input_size=state_dim, output_size=action_dim).to(device=self.device)
-        # output_size=1 because value function returns a scalar value.
-        self._critic_model = ACCritic(input_size=state_dim, output_size=1).to(device=self.device)
+        # Initialize the actor and critic models with the tunable architectures
+        self._actor_model = ACActor(input_size=state_dim,
+                                    hidden_sizes=actor_hidden_sizes,
+                                    action_dim=action_dim).to(device=self.device)
+        
+        self._critic_model = ACCritic(input_size=state_dim,
+                                      hidden_sizes=critic_hidden_sizes).to(device=self.device)
 
         self._trainer = ACTrainer(
             buffer=self._replay_buffer,
@@ -41,6 +44,7 @@ class ActorCriticAgent(AbstractAgent):
             critic_lr=self.critic_lr,
             device=self.device
         )
+
 
     def add_transition(self, transition: tuple) -> None:
         """

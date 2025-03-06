@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
+from typing import Callable
 
 from models.twoheadedmlp import TwoHeadedMLP
 from util.sampling import sample_two_headed_gaussian_model, sample_in_region, sample_out_of_region
@@ -21,7 +22,7 @@ class LyapunovACTrainer(Trainer):
         num_paths_sampled: int,
         norm_threshold: float,
         dt: float,
-        dynamics_fn: function,
+        dynamics_fn: Callable,
         state_space: int,
         r1_bounds: list,
         device: str

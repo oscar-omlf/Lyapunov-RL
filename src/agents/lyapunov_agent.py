@@ -4,8 +4,8 @@ import numpy as np
 from agents.abstract_agent import AbstractAgent
 from models.lyapunov_actor import LyapunovActor
 from models.lyapunov_critic import LyapunovCritic
-from src.trainers.lyapunov_ac_trainer import LyapunovACTrainer
-from src.util.sampling import sample_two_headed_gaussian_model
+from trainers.lyapunov_ac_trainer import LyapunovACTrainer
+from util.sampling import sample_two_headed_gaussian_model
 
 
 class LyapunovACAgent(AbstractAgent):
