@@ -15,16 +15,22 @@ class LyapunovACAgent(AbstractAgent):
         self.alpha = config.get("alpha")
         self.actor_lr = config.get("actor_lr")
         self.critic_lr = config.get("critic_lr")
-        dynamics_fn = config.get("dynamics_fn")
+        self.dynamics_fn = config.get("dynamics_fn")
+        self.batch_size = config.get("batch_size")
+        self.num_paths_sampled = config.get("num_paths_sampled")
         self.dt = config.get("dt")
         self.norm_threshold = config.get("norm_threshold")
-        r1_bounds = config.get("r1_bounds")
+        self.integ_threshold = config.get("integ_threshold")
+        self.r1_bounds = config.get("r1_bounds")
         
-        state_dim = self.state_space.shape[0]
-        action_dim = self.action_space.shape[0]
+        state_dim = self.state_space
+        action_dim = self.action_space
+
+        actor_hidden_sizes = config.get("actor_hidden_sizes", (64, 64))
+        critic_hidden_sizes = config.get("critic_hidden_sizes", (64, 64))
         
-        self._actor_model = LyapunovActor(state_dim, hidden_sizes=(64,64), action_dim=action_dim).to(device=self.device)
-        self._critic_model = LyapunovCritic(state_dim, hidden_sizes=(64,64)).to(device=self.device)
+        self._actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim=action_dim).to(device=self.device)
+        self._critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
 
 
         self._trainer = LyapunovACTrainer(
@@ -33,13 +39,14 @@ class LyapunovACAgent(AbstractAgent):
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
             alpha=self.alpha,
-            batch_size=config.get("batch_size"),
-            num_paths_sampled=config.get("num_paths_sampled"),
+            batch_size=self.batch_size,
+            num_paths_sampled=self.num_paths_sampled,
             norm_threshold=self.norm_threshold,
+            integ_threshold=self.integ_threshold,
             dt=self.dt,
-            dynamics_fn=dynamics_fn,
+            dynamics_fn=self.dynamics_fn,
             state_space=state_dim,
-            r1_bounds=r1_bounds,
+            r1_bounds=self.r1_bounds,
             device=self.device
         )
 

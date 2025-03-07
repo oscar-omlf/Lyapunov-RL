@@ -21,6 +21,7 @@ class LyapunovACTrainer(Trainer):
         batch_size: int,
         num_paths_sampled: int,
         norm_threshold: float,
+        integ_threshold: int,
         dt: float,
         dynamics_fn: Callable,
         state_space: int,
@@ -35,6 +36,7 @@ class LyapunovACTrainer(Trainer):
         self.batch_size = batch_size
         self.num_paths_sampled = num_paths_sampled
         self.norm_threshold = norm_threshold
+        self.integ_threshold = integ_threshold
         self.dt = dt
 
         self.dynamics_fn = dynamics_fn
@@ -47,12 +49,14 @@ class LyapunovACTrainer(Trainer):
         self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
 
+        print('Lyapunov Trainer Initialized!')
+
     def train(self):
         init_states = []
         values = []
 
         for _ in range(self.num_paths_sampled):
-            traj, value = self.simulate_trajectory()
+            traj, value, _ = self.simulate_trajectory()
             init_states.append(traj[0])
             values.append(value)
 

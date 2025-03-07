@@ -8,6 +8,7 @@ import logging
 from agents.abstract_agent import AbstractAgent
 from agents.agent_factory import AgentFactory
 from util.metrics_tracker import MetricsTracker
+from util.dynamics import pendulum_dynamics
 from util.compare_doa import compare_doa
 
 log_dir = "logs"
@@ -189,7 +190,13 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
     return study
 
 
-def main():
+def train_lyapunov_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
+    actor_arch = "-".join(map(str, config.get("actor_hidden_sizes", (64, 64))))
+    critic_arch = "-".join(map(str, config.get("critic_hidden_sizes", (64, 64))))
+    agent_id = f'Ly_lr{config["actor_lr"]}_cr{config["critic_lr"]}_a{config["alpha"]}_n{config["n_steps"]}_a{actor_arch}_c{critic_arch}'
+
+
+def start_training():
     env_str = "Pendulum-v1"
     config_ac = {
         "agent_str": "AC",
@@ -200,6 +207,7 @@ def main():
         "save_models": False,
         "show_last_episode": True,
     }
+
     config_lqr = {
         "agent_str": "LQR",
         "g": 10.0,
@@ -230,6 +238,48 @@ def main():
 
     logger.info("Hyperparameter optimization completed.")
 
+
+def main():
+    env_str = "Pendulum-v1"
+    config_lac = {
+        "agent_str": "Lyapunov-AC",
+        "alpha": 0.2,
+        "actor_lr": 1e-3,
+        "critic_lr": 2e-3,
+        "dynamics_fn": pendulum_dynamics,
+        "batch_size": 64,
+        "num_paths_sampled": 8,
+        "dt": 0.003,
+        "norm_threshold": 5e-2,
+        "integ_threshold": 150,
+        "r1_bounds": (np.array([-1.0, -1.0, -8.0]), np.array([1.0, 1.0, 8.0])),
+        "actor_hidden_sizes": (128, 64),
+        "critic_hidden_sizes": (64, 64)
+    }
+        
+    
+    num_episodes = 1000
+
+    tracker = MetricsTracker()
+    
+    agent = AgentFactory.create_agent(config=config_lac)
+
+    ep_actor_losses = []
+    ep_critic_losses = []
+
+    for episode in range(num_episodes):
+        loss = agent.update()
+
+        if loss:
+            actor_loss, critic_loss = loss
+            ep_actor_losses.append(actor_loss)
+            ep_critic_losses.append(critic_loss)
+
+            print(f'Episode {episode + 1}/{num_episodes} - Actor Loss: {actor_loss}, Critic Loss: {critic_loss}')
+
+    tracker.add_run_losses('lyAC', ep_actor_losses, ep_critic_losses)
+
+    tracker.plot_split()
 
 if __name__ == "__main__":
     main()
