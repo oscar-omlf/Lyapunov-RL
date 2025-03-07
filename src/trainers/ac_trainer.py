@@ -27,8 +27,8 @@ class ACTrainer(Trainer):
         self.n_steps = n_steps
         self.device = device
 
-        self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
+        self.actor_optimizer = torch.optim.RMSprop(actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.RMSprop(critic.parameters(), lr=critic_lr)
 
     def train(self):
         trajectory = self.buffer.get_buffer_list()
@@ -69,7 +69,7 @@ class ACTrainer(Trainer):
         advantages = returns_tensor - current_values.detach()  # (T,)
 
         # Normalize advantages (Just testing this out)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # Policy loss calculation (Algorithm line 7)
         dist = self.actor_model.predict(states)  # MultivariateNormal

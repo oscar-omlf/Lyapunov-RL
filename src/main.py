@@ -119,7 +119,9 @@ def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: i
 
 def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_episodes: int, n_trials: int):
     """
-    Run hyperparameter optimization using Optuna.
+    Run hyperparameter optimization using Optuna by minimizing a loss metric.
+    The performance metric is defined as the sum of the average actor and critic losses
+    over the last 10 episodes (or over all episodes if fewer than 10).
     """
     def objective(trial):
         # Training Hyperparameter Suggestions
@@ -132,14 +134,14 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
         n_actor_layers = trial.suggest_int("n_actor_layers", 1, 3)
         actor_hidden_sizes = []
         for i in range(n_actor_layers):
-            hidden_size = trial.suggest_int(f"actor_hidden_size_{i}", 32, 128)
+            hidden_size = trial.suggest_int(f"actor_hidden_size_{i}", 4, 128)
             actor_hidden_sizes.append(hidden_size)
 
         # Architecture Tuning for the Critic
         n_critic_layers = trial.suggest_int("n_critic_layers", 1, 3)
         critic_hidden_sizes = []
         for i in range(n_critic_layers):
-            hidden_size = trial.suggest_int(f"critic_hidden_size_{i}", 32, 128)
+            hidden_size = trial.suggest_int(f"critic_hidden_size_{i}", 4, 128)
             critic_hidden_sizes.append(hidden_size)
 
         # Build the Configuration Dictionary
@@ -167,14 +169,22 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
         tracker.add_run_returns(agent_id, returns)
         tracker.add_run_losses(agent_id, actor_losses, critic_losses)
 
-        performance = returns[-1]
+        # Instead of using the last episode's loss, compute the average loss over the final 10 episodes.
+        if len(actor_losses) >= 100:
+            avg_actor_loss_final = np.mean(actor_losses[-100:])
+            avg_critic_loss_final = np.mean(critic_losses[-100:])
+        else:
+            avg_actor_loss_final = np.mean(actor_losses)
+            avg_critic_loss_final = np.mean(critic_losses)
+        performance = avg_actor_loss_final + avg_critic_loss_final
+
         trial.report(performance, step=num_episodes)
         if trial.should_prune():
             raise optuna.exceptions.TrialPruned()
 
         return performance
 
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(direction="minimize")
     study.optimize(objective, n_trials=n_trials)
     return study
 
@@ -199,8 +209,8 @@ def main():
         "show_last_episode": False,
     }
     num_runs = 1
-    num_episodes = 20
-    n_trials = 200
+    num_episodes = 1000
+    n_trials = 300
 
     tracker = MetricsTracker()
 
