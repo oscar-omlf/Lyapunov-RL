@@ -75,7 +75,7 @@ class ACTrainer(Trainer):
         dist = self.actor_model.predict(states)  # MultivariateNormal
         # Reshape actions to (T, action_dim=1) for log_prob
         log_probs = dist.log_prob(actions)  # (T,)
-        actor_loss = -(advantages * log_probs).sum()
+        actor_loss = -(advantages * log_probs).mean()
 
         # Value loss calculation (Algorithm line 8)
         critic_loss = 0.5 * (returns_tensor - current_values).pow(2).mean()
