@@ -176,7 +176,7 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
         else:
             avg_actor_loss_final = np.mean(actor_losses)
             avg_critic_loss_final = np.mean(critic_losses)
-        performance = avg_actor_loss_final + avg_critic_loss_final
+        performance = abs(avg_actor_loss_final) + avg_critic_loss_final
 
         trial.report(performance, step=num_episodes)
         if trial.should_prune():
