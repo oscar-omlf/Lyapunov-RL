@@ -51,6 +51,8 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     episode_critic_losses = []
     total_stab = 0
 
+    n_steps = config['n_steps']
+
     for episode in range(num_episodes):
         ep_return = 0.0
         ep_actor_losses = []
@@ -66,12 +68,12 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
             done = terminated or truncated
             agent.add_transition((old_obs, action, reward, obs, done))
 
-        if len(agent._replay_buffer) > 0:
-            loss = agent.update()
-            if loss:
-                actor_loss, critic_loss = loss
-                ep_actor_losses.append(actor_loss)
-                ep_critic_losses.append(critic_loss)
+            if len(agent._replay_buffer) >= n_steps or done:
+                loss = agent.update()
+                if loss:
+                    actor_loss, critic_loss = loss
+                    if actor_loss: ep_actor_losses.append(actor_loss)
+                    ep_critic_losses.append(critic_loss)
 
         # Calculate stability (assumes pendulum state: cos, sin, theta_dot)
         cos_theta, sin_theta, theta_dot = old_obs
@@ -239,6 +241,31 @@ def start_training():
     logger.info("Hyperparameter optimization completed.")
 
 
+def train_default():
+    env_str = "Pendulum-v1"
+    config_ac = {
+        "agent_str": "AC",
+        "actor_lr": 0.0005,
+        "critic_lr": 0.009,
+        "gamma": 0.9,
+        "n_steps": 5,
+        "actor_update_interval": 5,
+        "save_models": False,
+        "show_last_episode": True,
+    }
+
+    num_runs = 1
+    num_episodes = 1000
+
+    tracker = MetricsTracker()
+
+    train_agent(env_str, config_ac, tracker, num_runs, num_episodes)
+
+    tracker.save_top10_plots(folder="plots")
+
+    logger.info("Hyperparameter optimization completed.")
+
+
 def main():
     env_str = "Pendulum-v1"
     config_lac = {
@@ -282,4 +309,4 @@ def main():
     tracker.plot_split()
 
 if __name__ == "__main__":
-    main()
+    train_default()

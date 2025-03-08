@@ -15,6 +15,7 @@ class ActorCriticAgent(AbstractAgent):
         
         self.gamma = config.get("gamma")
         self.n_steps = config.get("n_steps")
+        self.actor_update_interval = config.get("actor_update_interval")
         self.actor_lr = config.get("actor_lr")
         self.critic_lr = config.get("critic_lr")
 
@@ -40,6 +41,7 @@ class ActorCriticAgent(AbstractAgent):
             critic=self._critic_model,
             gamma=self.gamma,
             n_steps=self.n_steps,
+            actor_update_interval=self.actor_update_interval,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
             device=self.device
