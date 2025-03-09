@@ -51,8 +51,6 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     episode_critic_losses = []
     total_stab = 0
 
-    n_steps = config['n_steps']
-
     for episode in range(num_episodes):
         ep_return = 0.0
         ep_actor_losses = []
@@ -68,15 +66,15 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
             done = terminated or truncated
             agent.add_transition((old_obs, action, reward, obs, done))
 
-            if len(agent._replay_buffer) >= n_steps or done:
-                loss = agent.update()
-                if loss:
-                    actor_loss, critic_loss = loss
-                    if actor_loss: ep_actor_losses.append(actor_loss)
-                    ep_critic_losses.append(critic_loss)
+        if len(agent._replay_buffer) > 0:
+            loss = agent.update()
+            if loss:
+                actor_loss, critic_loss = loss
+                if actor_loss:
+                    ep_actor_losses.append(actor_loss)
+                ep_critic_losses.append(critic_loss)
 
-        # Calculate stability (assumes pendulum state: cos, sin, theta_dot)
-        cos_theta, sin_theta, theta_dot = old_obs
+        cos_theta, sin_theta, _ = old_obs
         theta = np.arctan2(sin_theta, cos_theta)
         if abs(theta) < 0.3 * np.pi:
             total_stab += 1
@@ -87,7 +85,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
         episode_actor_losses.append(avg_actor_loss)
         episode_critic_losses.append(avg_critic_loss)
 
-        if (episode + 1) % 10 == 0:
+        if (episode + 1) % 1 == 0:
             logger.info(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} "
                         f"| Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
 
@@ -120,40 +118,41 @@ def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: i
         tracker.add_run_losses(agent_id, actor_losses, critic_losses)
 
 
-def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_episodes: int, n_trials: int):
+def run_hyperparameter_optimization(env_str: str, 
+                                    tracker: MetricsTracker, 
+                                    num_episodes: int, 
+                                    n_trials: int) -> optuna.study.Study:
     """
-    Run hyperparameter optimization using Optuna by minimizing a loss metric.
-    The performance metric is defined as the sum of the average actor and critic losses
-    over the last 10 episodes (or over all episodes if fewer than 10).
+    Run hyperparameter optimization using Optuna by maximizing
+    the agent's average return in the last 200 episodes of training.
     """
-    def objective(trial):
-        # Training Hyperparameter Suggestions
-        actor_lr = trial.suggest_loguniform("actor_lr", 1e-4, 1e-2)
-        critic_lr = trial.suggest_loguniform("critic_lr", 1e-3, 1e-1)
-        gamma = trial.suggest_float("gamma", 0.8, 0.99)
-        n_steps = trial.suggest_int("n_steps", 1, 10)
 
-        # Architecture Tuning for the Actor
+    def objective(trial: optuna.Trial) -> float:
+        actor_lr = trial.suggest_float("actor_lr", 1e-5, 1e-2, log=True)
+        critic_lr = trial.suggest_float("critic_lr", 1e-4, 1e-1, log=True)
+        gamma = trial.suggest_float("gamma", 0.8, 0.9999)
+        n_steps = trial.suggest_int("n_steps", 1, 1)
+        actor_update_interval = trial.suggest_int("actor_update_interval", 2, 2)
+
         n_actor_layers = trial.suggest_int("n_actor_layers", 1, 3)
         actor_hidden_sizes = []
         for i in range(n_actor_layers):
-            hidden_size = trial.suggest_int(f"actor_hidden_size_{i}", 4, 128)
+            hidden_size = trial.suggest_int(f"actor_hidden_size_{i}", 8, 256)
             actor_hidden_sizes.append(hidden_size)
 
-        # Architecture Tuning for the Critic
         n_critic_layers = trial.suggest_int("n_critic_layers", 1, 3)
         critic_hidden_sizes = []
         for i in range(n_critic_layers):
-            hidden_size = trial.suggest_int(f"critic_hidden_size_{i}", 4, 128)
+            hidden_size = trial.suggest_int(f"critic_hidden_size_{i}", 8, 256)
             critic_hidden_sizes.append(hidden_size)
 
-        # Build the Configuration Dictionary
         config = {
             "agent_str": "AC",
             "actor_lr": actor_lr,
             "critic_lr": critic_lr,
             "gamma": gamma,
             "n_steps": n_steps,
+            "actor_update_interval": actor_update_interval,
             "actor_hidden_sizes": tuple(actor_hidden_sizes),
             "critic_hidden_sizes": tuple(critic_hidden_sizes),
             "save_models": False,
@@ -161,25 +160,28 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
         }
 
         agent_id = (
-            f"{config['agent_str']}_lr{actor_lr:.1e}_cr{critic_lr:.1e}_g{gamma:.2f}_n{n_steps}_"
+            f"{config['agent_str']}_"
+            f"lr{actor_lr:.1e}_cr{critic_lr:.1e}_g{gamma:.3f}_n{n_steps}_upd{actor_update_interval}_"
             f"a{'-'.join(map(str, actor_hidden_sizes))}_"
             f"c{'-'.join(map(str, critic_hidden_sizes))}"
         )
-        logger.info(f"Training agent: {agent_id}")
 
-        returns, actor_losses, critic_losses = run_episode(env_str, config, num_episodes)
+        print(f'Training {agent_id}')
+
+        returns, actor_losses, critic_losses = run_episode(
+            env_str=env_str,
+            config=config,
+            num_episodes=num_episodes
+        )
 
         tracker.add_run_returns(agent_id, returns)
         tracker.add_run_losses(agent_id, actor_losses, critic_losses)
 
-        # Instead of using the last episode's loss, compute the average loss over the final 10 episodes.
-        if len(actor_losses) >= 100:
-            avg_actor_loss_final = np.mean(actor_losses[-100:])
-            avg_critic_loss_final = np.mean(critic_losses[-100:])
+        if len(returns) >= 200:
+            performance = np.mean(returns[-200:])
         else:
-            avg_actor_loss_final = np.mean(actor_losses)
-            avg_critic_loss_final = np.mean(critic_losses)
-        performance = abs(avg_actor_loss_final) + avg_critic_loss_final
+            print('Why are you here?')
+            performance = np.mean(returns)
 
         trial.report(performance, step=num_episodes)
         if trial.should_prune():
@@ -187,9 +189,12 @@ def run_hyperparameter_optimization(env_str: str, tracker: MetricsTracker, num_e
 
         return performance
 
-    study = optuna.create_study(direction="minimize")
+    # Create a study with direction = "maximize"
+    study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials)
+
     return study
+
 
 
 def train_lyapunov_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
@@ -198,64 +203,52 @@ def train_lyapunov_agent(env_str: str, config: dict, tracker: MetricsTracker, nu
     agent_id = f'Ly_lr{config["actor_lr"]}_cr{config["critic_lr"]}_a{config["alpha"]}_n{config["n_steps"]}_a{actor_arch}_c{critic_arch}'
 
 
-def start_training():
+def train_ac_bayes_opt():
     env_str = "Pendulum-v1"
-    config_ac = {
-        "agent_str": "AC",
-        "actor_lr": 0.0005,
-        "critic_lr": 0.009,
-        "gamma": 0.9,
-        "n_steps": 5,
-        "save_models": False,
-        "show_last_episode": True,
-    }
-
-    config_lqr = {
-        "agent_str": "LQR",
-        "g": 10.0,
-        "Q": np.diag([0.001, 0.001]),
-        "R": np.array([[0.0001]]),
-        "save_models": True,
-        "show_last_episode": False,
-    }
-    num_runs = 1
     num_episodes = 1000
-    n_trials = 300
+    n_trials = 50
 
     tracker = MetricsTracker()
 
-    # train_agent(env_str, config_ac, tracker, num_runs, num_episodes)
-    
-    study = run_hyperparameter_optimization(env_str, tracker, num_episodes, n_trials)
+    study = run_hyperparameter_optimization(
+        env_str, 
+        tracker, 
+        num_episodes, 
+        n_trials
+    )
 
-    # Save Optuna visualization plots in "plots" folder.
     os.makedirs("plots", exist_ok=True)
-    fig_history = vis.plot_optimization_history(study)
+    fig_history = optuna.visualization.plot_optimization_history(study)
     fig_history.write_image(os.path.join("plots", "optimization_history.png"))
-    fig_importance = vis.plot_param_importances(study)
+
+    fig_importance = optuna.visualization.plot_param_importances(study)
     fig_importance.write_image(os.path.join("plots", "param_importances.png"))
 
-    # Save top 10 agent plots from the MetricsTracker in "plots" folder.
     tracker.save_top10_plots(folder="plots")
 
+    best_trial = study.best_trial
     logger.info("Hyperparameter optimization completed.")
+    logger.info(f"Best trial params: {best_trial.params}")
+    logger.info(f"Best trial value (avg return of last 200 episodes): {best_trial.value}")
 
 
 def train_default():
     env_str = "Pendulum-v1"
     config_ac = {
         "agent_str": "AC",
-        "actor_lr": 0.0005,
+        "actor_lr": 0.005,
         "critic_lr": 0.009,
-        "gamma": 0.9,
-        "n_steps": 5,
-        "actor_update_interval": 5,
+        "gamma": 0.95,
+        "n_steps": 1,
+        "actor_update_interval": 2,
+        "actor_hidden_sizes": (256, 64),
+        "critic_hidden_sizes": (64, 64),
         "save_models": False,
         "show_last_episode": True,
     }
 
     num_runs = 1
-    num_episodes = 1000
+    num_episodes = 500
 
     tracker = MetricsTracker()
 
@@ -266,7 +259,7 @@ def train_default():
     logger.info("Hyperparameter optimization completed.")
 
 
-def main():
+def train_lac():
     env_str = "Pendulum-v1"
     config_lac = {
         "agent_str": "Lyapunov-AC",
@@ -309,4 +302,4 @@ def main():
     tracker.plot_split()
 
 if __name__ == "__main__":
-    train_default()
+    train_ac_bayes_opt()
