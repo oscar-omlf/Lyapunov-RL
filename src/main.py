@@ -85,7 +85,7 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
         episode_actor_losses.append(avg_actor_loss)
         episode_critic_losses.append(avg_critic_loss)
 
-        if (episode + 1) % 1 == 0:
+        if (episode + 1) % 10 == 0:
             logger.info(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} "
                         f"| Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
 
@@ -132,7 +132,7 @@ def run_hyperparameter_optimization(env_str: str,
         critic_lr = trial.suggest_float("critic_lr", 1e-4, 1e-1, log=True)
         gamma = trial.suggest_float("gamma", 0.8, 0.9999)
         n_steps = trial.suggest_int("n_steps", 1, 1)
-        actor_update_interval = trial.suggest_int("actor_update_interval", 2, 2)
+        actor_update_interval = trial.suggest_int("actor_update_interval", 1, 5)
 
         n_actor_layers = trial.suggest_int("n_actor_layers", 1, 3)
         actor_hidden_sizes = []
