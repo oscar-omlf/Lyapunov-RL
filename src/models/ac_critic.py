@@ -13,7 +13,6 @@ class ACCritic(nn.Module):
             layers.append(nn.ReLU())
             prev = h
         layers.append(nn.Linear(prev, 1))
-        layers.append(nn.Sigmoid())
         self.model = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
