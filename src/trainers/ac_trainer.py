@@ -6,7 +6,6 @@ from agents.abstract_agent import ReplayBuffer
 from models.twoheadedmlp import TwoHeadedMLP
 from trainers.abstract_trainer import Trainer
 
-
 class ACTrainer(Trainer):
     def __init__(
         self, 
@@ -14,7 +13,8 @@ class ACTrainer(Trainer):
         actor: TwoHeadedMLP, 
         critic: nn.Module,
         gamma: float, 
-        n_steps: int, 
+        n_steps: int,
+        policy_freq: int,
         actor_lr: float, 
         critic_lr: float, 
         device: str
@@ -26,6 +26,9 @@ class ACTrainer(Trainer):
         self.gamma = gamma
         self.n_steps = n_steps
         self.device = device
+
+        self.policy_freq = policy_freq
+        self._update_counter = 1
 
         self.actor_optimizer = torch.optim.RMSprop(actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.RMSprop(critic.parameters(), lr=critic_lr)
@@ -66,27 +69,33 @@ class ACTrainer(Trainer):
 
         # Calculate advantages (R_t - V(s_t))
         current_values = self.critic_model(states).squeeze()  # (T,)
-        advantages = returns_tensor - current_values.detach()  # (T,)
 
-        # Normalize advantages (Just testing this out)
-        # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        actor_loss = None
+        if (self._update_counter % self.policy_freq == 0):
+            advantages = returns_tensor - current_values.detach()  # (T,)
+            # Normalize advantages (Just testing this out)
+            # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Policy loss calculation (Algorithm line 7)
-        dist = self.actor_model.predict(states)  # MultivariateNormal
-        # Reshape actions to (T, action_dim=1) for log_prob
-        log_probs = dist.log_prob(actions)  # (T,)
-        actor_loss = -(advantages * log_probs).mean()
+            # Policy loss calculation (Algorithm line 7)
+            dist = self.actor_model.predict(states)  # MultivariateNormal
+            # Reshape actions to (T, action_dim=1) for log_prob
+            log_probs = dist.log_prob(actions)  # (T,)
+            actor_loss = -(advantages * log_probs).mean()
+
+            # Update networks (Algorithm lines 9-10)
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+        self._update_counter += 1
 
         # Value loss calculation (Algorithm line 8)
         critic_loss = 0.5 * (returns_tensor - current_values).pow(2).mean()
-
-        # Update networks (Algorithm lines 9-10)
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
+        if actor_loss is None:
+            return None, critic_loss.item()
         return actor_loss.item(), critic_loss.item()

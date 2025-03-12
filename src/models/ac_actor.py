@@ -3,26 +3,22 @@ import torch.nn as nn
 from torch.distributions import Normal
 
 from models.twoheadedmlp import TwoHeadedMLP
+from models.mlp import MLP
 
 LOG_SIG_MIN = -20
 LOG_SIG_MAX = 2
 class ACActor(TwoHeadedMLP):
-    def __init__(self, input_size, hidden_sizes=(64,64), action_dim=1):
+    def __init__(self, input_size, hidden_sizes=(64, 64), action_dim=1):
         super(ACActor, self).__init__()
-        layers = []
-        prev_dim = input_size
-        for h in hidden_sizes:
-            layers.append(nn.Linear(prev_dim, h))
-            layers.append(nn.ReLU())
-            prev_dim = h
-        self.layers = nn.Sequential(*layers)
-        self.mean_head = nn.Linear(prev_dim, action_dim)
-        self.log_std_head = nn.Linear(prev_dim, action_dim)
+        self.feature_extractor = MLP(input_size, hidden_sizes, output_size=hidden_sizes[-1])
+        self.mean_head = nn.Linear(hidden_sizes[-1], action_dim)
+        self.log_std_head = nn.Linear(hidden_sizes[-1], action_dim)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        features = self.layers(x)
+    def forward(self, x):
+        features = self.feature_extractor(x)
         mean = self.mean_head(features)
         log_std = self.log_std_head(features)
+        # Clamp log_std to ensure numerical stability.
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
         return mean, log_std
 
