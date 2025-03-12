@@ -12,9 +12,7 @@ class LyapunovCritic(nn.Module):
         return self.model(x).squeeze(-1)
 
     def forward_with_grad(self, x):
-        # Compute the network output.
         y = self(x)
-        # Compute the Jacobian with respect to input x.
         jacob = torch.autograd.functional.jacobian(self, (x,), create_graph=True)[0]
         grad = torch.diagonal(jacob, dim1=0, dim2=1).T
         return y, grad

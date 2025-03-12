@@ -48,7 +48,7 @@ class TD3Trainer(Trainer):
         if len(self.buffer) < self.batch_size:
             return None
 
-        # Sample a mini-batch from the replay buffer.
+        # Sample a mini-batch from the replay buffer
         transitions = random.sample(self.buffer.get_buffer_list(), self.batch_size)
         states = torch.stack([t[0] for t in transitions])
         actions = torch.stack([t[1] for t in transitions])
@@ -79,7 +79,7 @@ class TD3Trainer(Trainer):
             actor_loss.backward()
             self.actor_optimizer.step()
 
-            # Soft-update target networks.
+            # Soft-update target networks
             for param, target_param in zip(self.critic_model.parameters(), self.critic_target.parameters()):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
             for param, target_param in zip(self.actor_model.parameters(), self.actor_target.parameters()):

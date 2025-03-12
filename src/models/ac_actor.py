@@ -18,7 +18,6 @@ class ACActor(TwoHeadedMLP):
         features = self.feature_extractor(x)
         mean = self.mean_head(features)
         log_std = self.log_std_head(features)
-        # Clamp log_std to ensure numerical stability.
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
         return mean, log_std
 
