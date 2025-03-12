@@ -1,19 +1,13 @@
 import torch
 import torch.nn as nn
 
+from models.mlp import MLP
+
 
 class ACCritic(nn.Module):
-    def __init__(self, input_size, hidden_sizes=(64,64)):
+    def __init__(self, input_size, hidden_sizes=(64, 64)):
         super(ACCritic, self).__init__()
-        self.dims = [input_size] + list(hidden_sizes) + [1]
-        layers = []
-        prev = input_size
-        for h in hidden_sizes:
-            layers.append(nn.Linear(prev, h))
-            layers.append(nn.ReLU())
-            prev = h
-        layers.append(nn.Linear(prev, 1))
-        self.model = nn.Sequential(*layers)
+        self.model = MLP(input_size, hidden_sizes, output_size=1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         return self.model(x)
