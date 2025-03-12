@@ -42,6 +42,15 @@ def show_last_episode(env_str: str, agent: AbstractAgent):
     env.close()
 
 
+def update_agent(agent: AbstractAgent, ep_actor_losses: list, ep_critic_losses: list):
+    loss = agent.update()
+    if loss:
+        actor_loss, critic_loss = loss
+        if actor_loss:
+            ep_actor_losses.append(actor_loss)
+        ep_critic_losses.append(critic_loss)
+
+
 def run_episode(env_str: str, config: dict, num_episodes: int):
     env = gym.make(env_str)
     agent = AgentFactory.create_agent(config=config, env=env)
@@ -51,41 +60,45 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     episode_critic_losses = []
     total_stab = 0
 
+    start_episodes = config.get("start_episodes", 125)
+    update_threshold = config.get("batch_size", 256)
+
     for episode in range(num_episodes):
         ep_return = 0.0
         ep_actor_losses = []
         ep_critic_losses = []
         done = False
-        obs, _ = env.reset() 
+        obs, _ = env.reset()
 
         while not done:
             old_obs = obs
-            action = agent.policy(old_obs)
+            # Use random actions during the initial exploration phase.
+            if episode < start_episodes:
+                action = env.action_space.sample()
+            else:
+                action = agent.policy(old_obs)
             obs, reward, terminated, truncated, _ = env.step(action)
             ep_return += reward
             done = terminated or truncated
             agent.add_transition((old_obs, action, reward, obs, done))
 
-        if len(agent._replay_buffer) > 0:
-            loss = agent.update()
-            if loss:
-                actor_loss, critic_loss = loss
-                if actor_loss:
-                    ep_actor_losses.append(actor_loss)
-                ep_critic_losses.append(critic_loss)
+            # Only update if we're past the random phase.
+            if episode >= start_episodes and (len(agent._replay_buffer) >= update_threshold or done):
+                update_agent(agent, ep_actor_losses, ep_critic_losses)
 
+        # Calculate stability (assumes pendulum state: cos, sin, theta_dot)
         cos_theta, sin_theta, _ = old_obs
         theta = np.arctan2(sin_theta, cos_theta)
         if abs(theta) < 0.3 * np.pi:
             total_stab += 1
-
+            
         episode_returns.append(ep_return)
         avg_actor_loss = np.mean(ep_actor_losses) if ep_actor_losses else 0.0
         avg_critic_loss = np.mean(ep_critic_losses) if ep_critic_losses else 0.0
         episode_actor_losses.append(avg_actor_loss)
         episode_critic_losses.append(avg_critic_loss)
 
-        if (episode + 1) % 10 == 0:
+        if (episode + 1) % 1 == 0:
             logger.info(f"Episode {episode+1}/{num_episodes} | Return: {ep_return:.2f} "
                         f"| Actor Loss: {avg_actor_loss:.4f} | Critic Loss: {avg_critic_loss:.4f}")
 
@@ -104,10 +117,16 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
 def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
     if config["agent_str"] == "LQR":
         agent_id = "LQR"
-    else:
-        actor_arch = "-".join(map(str, config.get("actor_hidden_sizes", (64, 64))))
-        critic_arch = "-".join(map(str, config.get("critic_hidden_sizes", (64, 64))))
-        agent_id = f'AC_lr{config["actor_lr"]}_cr{config["critic_lr"]}_g{config["gamma"]}_n{config["n_steps"]}_a{actor_arch}_c{critic_arch}'
+    
+    actor_arch = "-".join(map(str, config.get("actor_hidden_sizes", (64, 64))))
+    critic_arch = "-".join(map(str, config.get("critic_hidden_sizes", (64, 64))))
+
+    agent_id = f'{config["agent_str"]}_lr{config["actor_lr"]}_cr{config["critic_lr"]}_g{config["gamma"]}'
+    
+    if config["agent_str"] == "AC":
+        agent_id += f'n{config["n_steps"]}'
+    
+    agent_id += f'_a{actor_arch}_c{critic_arch}'
     
     logger.info(f"Training agent: {agent_id}")
 
@@ -132,7 +151,7 @@ def run_hyperparameter_optimization(env_str: str,
         critic_lr = trial.suggest_float("critic_lr", 1e-4, 1e-1, log=True)
         gamma = trial.suggest_float("gamma", 0.8, 0.9999)
         n_steps = trial.suggest_int("n_steps", 1, 1)
-        actor_update_interval = trial.suggest_int("actor_update_interval", 1, 5)
+        policy_freq = trial.suggest_int("policy_freq", 1, 5)
 
         n_actor_layers = trial.suggest_int("n_actor_layers", 1, 3)
         actor_hidden_sizes = []
@@ -152,7 +171,7 @@ def run_hyperparameter_optimization(env_str: str,
             "critic_lr": critic_lr,
             "gamma": gamma,
             "n_steps": n_steps,
-            "actor_update_interval": actor_update_interval,
+            "policy_freq": policy_freq,
             "actor_hidden_sizes": tuple(actor_hidden_sizes),
             "critic_hidden_sizes": tuple(critic_hidden_sizes),
             "save_models": False,
@@ -161,7 +180,7 @@ def run_hyperparameter_optimization(env_str: str,
 
         agent_id = (
             f"{config['agent_str']}_"
-            f"lr{actor_lr:.1e}_cr{critic_lr:.1e}_g{gamma:.3f}_n{n_steps}_upd{actor_update_interval}_"
+            f"lr{actor_lr:.1e}_cr{critic_lr:.1e}_g{gamma:.3f}_n{n_steps}_upd{policy_freq}_"
             f"a{'-'.join(map(str, actor_hidden_sizes))}_"
             f"c{'-'.join(map(str, critic_hidden_sizes))}"
         )
@@ -194,13 +213,6 @@ def run_hyperparameter_optimization(env_str: str,
     study.optimize(objective, n_trials=n_trials)
 
     return study
-
-
-
-def train_lyapunov_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: int, num_episodes: int):
-    actor_arch = "-".join(map(str, config.get("actor_hidden_sizes", (64, 64))))
-    critic_arch = "-".join(map(str, config.get("critic_hidden_sizes", (64, 64))))
-    agent_id = f'Ly_lr{config["actor_lr"]}_cr{config["critic_lr"]}_a{config["alpha"]}_n{config["n_steps"]}_a{actor_arch}_c{critic_arch}'
 
 
 def train_ac_bayes_opt():
@@ -240,9 +252,27 @@ def train_default():
         "critic_lr": 0.009,
         "gamma": 0.95,
         "n_steps": 1,
-        "actor_update_interval": 2,
+        "policy_freq": 2,
         "actor_hidden_sizes": (256, 64),
         "critic_hidden_sizes": (64, 64),
+        "save_models": False,
+        "show_last_episode": True,
+    }
+
+    config_td3 = {
+        "agent_str": "TD3",
+        "actor_lr": 3e-4,
+        "critic_lr": 3e-4,
+        "gamma": 0.99,
+        "tau": 0.005,
+        "batch_size": 256,
+        "policy_freq": 2,
+        "policy_noise": 0.2,
+        "noise_clip": 0.5,
+        "start_episodes": 125,
+        "expl_noise": 0.1,
+        "actor_hidden_sizes": (256, 256),
+        "critic_hidden_sizes": (256, 256),
         "save_models": False,
         "show_last_episode": True,
     }
@@ -252,7 +282,7 @@ def train_default():
 
     tracker = MetricsTracker()
 
-    train_agent(env_str, config_ac, tracker, num_runs, num_episodes)
+    train_agent(env_str, config_td3, tracker, num_runs, num_episodes)
 
     tracker.save_top10_plots(folder="plots")
 
@@ -302,4 +332,4 @@ def train_lac():
     tracker.plot_split()
 
 if __name__ == "__main__":
-    train_ac_bayes_opt()
+    train_default()

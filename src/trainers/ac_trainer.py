@@ -14,7 +14,7 @@ class ACTrainer(Trainer):
         critic: nn.Module,
         gamma: float, 
         n_steps: int,
-        actor_update_interval: int,
+        policy_freq: int,
         actor_lr: float, 
         critic_lr: float, 
         device: str
@@ -27,7 +27,7 @@ class ACTrainer(Trainer):
         self.n_steps = n_steps
         self.device = device
 
-        self.actor_update_interval = actor_update_interval
+        self.policy_freq = policy_freq
         self._update_counter = 1
 
         self.actor_optimizer = torch.optim.RMSprop(actor.parameters(), lr=actor_lr)
@@ -71,7 +71,7 @@ class ACTrainer(Trainer):
         current_values = self.critic_model(states).squeeze()  # (T,)
 
         actor_loss = None
-        if (self._update_counter % self.actor_update_interval == 0):
+        if (self._update_counter % self.policy_freq == 0):
             advantages = returns_tensor - current_values.detach()  # (T,)
             # Normalize advantages (Just testing this out)
             # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -86,8 +86,6 @@ class ACTrainer(Trainer):
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
-
-            self._update_counter = 0
 
         self._update_counter += 1
 
