@@ -63,6 +63,8 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
     start_episodes = config.get("start_episodes", 125)
     update_threshold = config.get("batch_size", 256)
 
+    agent_str = config.get("agent_str")
+
     for episode in range(num_episodes):
         ep_return = 0.0
         ep_actor_losses = []
@@ -72,9 +74,12 @@ def run_episode(env_str: str, config: dict, num_episodes: int):
 
         while not done:
             old_obs = obs
-            # Use random actions during the initial exploration phase.
-            if episode < start_episodes:
-                action = env.action_space.sample()
+            if agent_str == "TD3":
+                # Use random actions during the initial exploration phase.
+                if episode < start_episodes:
+                    action = env.action_space.sample()
+                else:
+                    action = agent.policy(old_obs)
             else:
                 action = agent.policy(old_obs)
             obs, reward, terminated, truncated, _ = env.step(action)
@@ -118,15 +123,16 @@ def train_agent(env_str: str, config: dict, tracker: MetricsTracker, num_runs: i
     if config["agent_str"] == "LQR":
         agent_id = "LQR"
     
-    actor_arch = "-".join(map(str, config.get("actor_hidden_sizes", (64, 64))))
-    critic_arch = "-".join(map(str, config.get("critic_hidden_sizes", (64, 64))))
+    else:
+        actor_arch = "-".join(map(str, config.get("actor_hidden_sizes", (64, 64))))
+        critic_arch = "-".join(map(str, config.get("critic_hidden_sizes", (64, 64))))
 
-    agent_id = f'{config["agent_str"]}_lr{config["actor_lr"]}_cr{config["critic_lr"]}_g{config["gamma"]}'
+        agent_id = f'{config["agent_str"]}_lr{config["actor_lr"]}_cr{config["critic_lr"]}_g{config["gamma"]}'
     
-    if config["agent_str"] == "AC":
-        agent_id += f'n{config["n_steps"]}'
-    
-    agent_id += f'_a{actor_arch}_c{critic_arch}'
+        if config["agent_str"] == "AC":
+            agent_id += f'n{config["n_steps"]}'
+        
+        agent_id += f'_a{actor_arch}_c{critic_arch}'
     
     logger.info(f"Training agent: {agent_id}")
 
@@ -259,6 +265,15 @@ def train_default():
         "show_last_episode": True,
     }
 
+    config_lqr = {
+        "agent_str": "LQR",
+        "g": 10.0,
+        "Q": np.diag([100., 7.66800711]), 
+        "R": np.array([[0.52253548]]),
+        "save_models": True,
+        "show_last_episode": False,
+    }
+
     config_td3 = {
         "agent_str": "TD3",
         "actor_lr": 3e-4,
@@ -282,7 +297,7 @@ def train_default():
 
     tracker = MetricsTracker()
 
-    train_agent(env_str, config_td3, tracker, num_runs, num_episodes)
+    train_agent(env_str, config_lqr, tracker, num_runs, num_episodes)
 
     tracker.save_top10_plots(folder="plots")
 

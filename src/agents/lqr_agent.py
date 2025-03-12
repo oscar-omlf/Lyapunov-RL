@@ -24,9 +24,9 @@ class LQRAgent(AbstractAgent):
         #
         # Therefore, the system matrices are:
         A = np.array([[0, 1],
-                      [(3 * self.g) / (2 * self.l), 0]])  # For g=10, l=1, A = [[0,1], [-10,0]]
+                      [(3 * self.g) / (2 * self.l), 0]])
         B = np.array([[0],
-                      [3 / (self.m * self.l**2)]])  # For m=1, l=1, B = [[0], [1]]
+                      [3 / (self.m * self.l**2)]])
         
         self.A = A
         self.B = B
@@ -44,8 +44,8 @@ class LQRAgent(AbstractAgent):
         # Compute the optimal gain
         # Gain is computed as: K = R^{-1} B^T P
         self.K = np.linalg.inv(R) @ (B.T @ P)  # shape (1,2)
-        print("LQR P matrix:", P)
-        print("LQR gain K:", self.K)
+        # print("LQR P matrix:", P)
+        # print("LQR gain K:", self.K)
 
     def add_transition(self, transition: tuple) -> None:
         # LQR is computed offline; no transitions needed
