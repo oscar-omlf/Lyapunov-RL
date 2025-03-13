@@ -1,9 +1,12 @@
+import os
 import numpy as np
 import gymnasium as gym
 from agents.lqr_agent import LQRAgent
 
 from concurrent.futures import ProcessPoolExecutor
 
+
+print(f'Number of CPU cores in use: {os.cpu_count()}')
 
 def evaluate_candidate(candidate, num_episodes=200, num_steps=200, window=30, render=False):
     """
@@ -55,7 +58,7 @@ def evaluate_candidate(candidate, num_episodes=200, num_steps=200, window=30, re
 
 def parallel_evaluate(candidates):
     """Evaluate a list/array of candidates in parallel."""
-    with ProcessPoolExecutor(max_workers=32) as executor:
+    with ProcessPoolExecutor() as executor:
         # executor.map should return results in the same order as the candidates
         fitness = list(executor.map(evaluate_candidate, candidates))
     return np.array(fitness)
