@@ -1,10 +1,11 @@
 import numpy as np
 import torch
-from torch import nn
-import torch.nn.functional as F
 from typing import Callable
+from torch import nn
+from torch.optim.lr_scheduler import StepLR
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
-from models.twoheadedmlp import TwoHeadedMLP
 from util.sampling import sample_two_headed_gaussian_model, sample_in_region, sample_out_of_region
 from util.rk4_step import rk4_step
 from trainers.abstract_trainer import Trainer
@@ -13,7 +14,7 @@ from trainers.abstract_trainer import Trainer
 class LyapunovACTrainer(Trainer):
     def __init__(
         self, 
-        actor: TwoHeadedMLP, 
+        actor: nn.Module, 
         critic: nn.Module,
         actor_lr: float, 
         critic_lr: float,
@@ -49,6 +50,11 @@ class LyapunovACTrainer(Trainer):
         self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
 
+        self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
+        self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
+
+        self.timesteps = 0
+
         print('Lyapunov Trainer Initialized!')
 
     def train(self):
@@ -68,7 +74,7 @@ class LyapunovACTrainer(Trainer):
 
         # 1) Enforces W(0) = 0
         zeros_tensor = torch.zeros((1, self.state_space), dtype=torch.float32, device=self.device)
-        Lz = self.critic_model(zeros_tensor)
+        Lz = 5 * torch.square(self.critic_model(zeros_tensor))
 
         # 2) Enforces W(x) = tanh(alpha * V(x))
         Wx = self.critic_model(init_states)
@@ -81,14 +87,14 @@ class LyapunovACTrainer(Trainer):
 
         Wx, grad_Wx = self.critic_model.forward_with_grad(init_states)
                     
-        us, _ = sample_two_headed_gaussian_model(self.actor_model, init_states)
+        us = self.actor_model(init_states)
         fxu = self.dynamics_fn(init_states, us)
 
         phix = torch.linalg.vector_norm(init_states, ord=2, dim=1)
         resid = torch.sum(grad_Wx * fxu.detach(), dim=1) + self.alpha * (1 + Wx) * (1 - Wx) * phix
         Lp = torch.mean(torch.square(resid))
 
-        # 4) Encourage control actions that decrease the Lyapunov function.
+        # 4) Encourage control actions that decrease the Lyapunov function
         grad_norm = torch.linalg.vector_norm(grad_Wx, ord=2, dim=1, keepdim=True)
         unit_grad = grad_Wx / (grad_norm + 1e-8)
         Lc = torch.mean(torch.sum(unit_grad.detach() * fxu, dim=1))
@@ -97,7 +103,7 @@ class LyapunovACTrainer(Trainer):
         init_states = sample_out_of_region(self.batch_size, self.lb, self.ub, scale=2)  # Sample from R2
         init_states = torch.as_tensor(init_states, dtype=torch.float32, device=self.device)
         Wx = self.critic_model(init_states)
-        Lb = torch.mean(torch.abs(Wx - 1.0))
+        Lb = 2 * torch.mean(torch.abs(Wx - 1.0))
 
         actor_loss = Lc
         critic_loss = Lz + Lr + Lp + Lb
@@ -111,6 +117,15 @@ class LyapunovACTrainer(Trainer):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
+
+        # Do a step on the Scheduler
+        self.actor_scheduler.step()
+        self.critic_scheduler.step()
+
+        self.timesteps += 1
+        if self.timesteps % 20 == 0:
+            # call func for graph here
+            pass
 
         return actor_loss.item(), critic_loss.item()
 
@@ -169,7 +184,7 @@ class LyapunovACTrainer(Trainer):
             
             # Obtain the control input from the actor.
             # Here we sample from the actor's two-headed Gaussian policy.
-            u, _ = sample_two_headed_gaussian_model(self.actor_model, x)
+            u = self.actor_model(x)
             # If the control dimension is 1, ensure u has shape [batch_size, 1].
             if u.dim() == 1:
                 u = u.unsqueeze(1)
@@ -178,3 +193,35 @@ class LyapunovACTrainer(Trainer):
             x_next = rk4_step(self.dynamics_fn, traj[-1], u, dt=self.dt)
             x = x_next.clone()
             traj.append(x.clone())
+
+    def plot_level_set_and_trajectories(self):
+        # Create a grid covering R2 (boundary scaled by 2)
+        x_min, x_max = self.lb[0]*2, self.ub[0]*2
+        y_min, y_max = self.lb[1]*2, self.ub[1]*2
+        xx = np.linspace(x_min, x_max, 300)
+        yy = np.linspace(y_min, y_max, 300)
+        X, Y = np.meshgrid(xx, yy)
+        grid_points = np.stack([X.flatten(), Y.flatten()], axis=1)
+        grid_tensor = torch.as_tensor(grid_points, dtype=torch.float32, device=self.device)
+        
+        with torch.no_grad():
+            Z = self.critic_model(grid_tensor).cpu().numpy()
+        Z = Z.reshape(X.shape)
+        
+        plt.figure(figsize=(6,5))
+        cp = plt.contourf(X, Y, Z, levels=50, cmap='viridis')
+        plt.colorbar(cp)
+        plt.title("Critic Level Set (Lyapunov Function)")
+        plt.xlabel("x[0]")
+        plt.ylabel("x[1]")
+        
+        # Overlay a few trajectories
+        for _ in range(5):
+            traj, _, converged = self.simulate_trajectory(max_steps=3000)
+            if converged:
+                traj_np = traj.cpu().numpy()
+                plt.plot(traj_np[:, 0], traj_np[:, 1], 'r-', linewidth=1)
+                plt.plot(traj_np[0, 0], traj_np[0, 1], 'ro')  # starting point marker
+        plt.gca().set_aspect('equal')
+        plt.savefig(f"./plots/lyAC_{self.timesteps}.png")
+        plt.close()

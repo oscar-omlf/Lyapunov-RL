@@ -305,7 +305,6 @@ def train_default():
 
 
 def train_lac():
-    env_str = "Pendulum-v1"
     config_lac = {
         "agent_str": "Lyapunov-AC",
         "alpha": 0.2,
@@ -317,9 +316,11 @@ def train_lac():
         "dt": 0.003,
         "norm_threshold": 5e-2,
         "integ_threshold": 150,
-        "r1_bounds": (np.array([-1.0, -1.0, -8.0]), np.array([1.0, 1.0, 8.0])),
-        "actor_hidden_sizes": (128, 64),
-        "critic_hidden_sizes": (64, 64)
+        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
+        "actor_hidden_sizes": (5, 5),
+        "critic_hidden_sizes": (20, 20),
+        "state_space": 2,
+        "action_space": 1
     }
         
     
@@ -344,7 +345,7 @@ def train_lac():
 
     tracker.add_run_losses('lyAC', ep_actor_losses, ep_critic_losses)
 
-    tracker.plot_split()
+    tracker.save_top10_plots(folder='plots')
 
 if __name__ == "__main__":
-    train_default()
+    train_lac()

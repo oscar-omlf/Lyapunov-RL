@@ -30,6 +30,8 @@ class AbstractAgent(ABC):
         self.device = fetch_device()
         self._replay_buffer = ReplayBuffer()
 
+        print(f'Device: {self.device}')
+
     @abstractmethod
     def add_transition(self, transition):
         """

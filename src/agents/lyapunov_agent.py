@@ -26,10 +26,12 @@ class LyapunovACAgent(AbstractAgent):
         state_dim = self.state_space
         action_dim = self.action_space
 
-        actor_hidden_sizes = config.get("actor_hidden_sizes", (64, 64))
-        critic_hidden_sizes = config.get("critic_hidden_sizes", (64, 64))
+        actor_hidden_sizes = config.get("actor_hidden_sizes", (5, 5))
+        critic_hidden_sizes = config.get("critic_hidden_sizes", (20, 20))
+
+        self.max_action = 2.0
         
-        self._actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim=action_dim).to(device=self.device)
+        self._actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
         self._critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
 
 
@@ -58,34 +60,23 @@ class LyapunovACAgent(AbstractAgent):
 
     def policy(self, state):
         s_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-        with torch.no_grad():
-            action, _ = sample_two_headed_gaussian_model(self._actor_model, s_tensor)
+        action = self._actor_model(s_tensor)
         return action.cpu().numpy().flatten()
 
-    def save(self, file_path='./'):
+    def save(self, file_path='../saved_models'):
         torch.save(self._actor_model.state_dict(), file_path + "lyapunov_actor_model.pth")
         torch.save(self._critic_model.state_dict(), file_path + "lyapunov_critic_model.pth")
 
-    def load(self, file_path='./'):
+    def load(self, file_path='../saved_models'):
         self._actor_model.load_state_dict(torch.load(file_path + "lyapunov_actor_model.pth"))
         self._critic_model.load_state_dict(torch.load(file_path + "lyapunov_critic_model.pth"))
 
     def compute_lyapunov(self, points: np.ndarray) -> np.ndarray:
         """
         Compute the Lyapunov function values W(x) using the critic network.
-        If points have 2 columns, they are assumed to be [theta, theta_dot] and are converted
-        to the 3D observation [cos(theta), sin(theta), theta_dot]. Otherwise, points are used as is.
         This function is used to estimate the Domain of Attraction (DoA).
         """
-        if points.shape[1] == 2:
-            theta = points[:, 0]
-            theta_dot = points[:, 1]
-            cos_theta = np.cos(theta)
-            sin_theta = np.sin(theta)
-            obs = np.column_stack([cos_theta, sin_theta, theta_dot])
-        else:
-            obs = points
-        obs_t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        obs_t = torch.as_tensor(points, dtype=torch.float32, device=self.device)
         with torch.no_grad():
             W_vals = self._critic_model(obs_t)
         return W_vals.cpu().numpy()

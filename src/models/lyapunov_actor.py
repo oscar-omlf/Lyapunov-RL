@@ -6,19 +6,18 @@ from models.mlp import MLP
 
 
 class LyapunovActor(nn.Module):
-    def __init__(self, input_size, hidden_sizes=(64, 64), action_dim=1):
+    def __init__(self, input_size, hidden_sizes=(5, 5), action_dim=1, inner_activation=nn.Tanh(), max_action=1.0):
         super(LyapunovActor, self).__init__()
-        self.feature_extractor = MLP(input_size, hidden_sizes, output_size=hidden_sizes[-1])
-        self.mean_head = nn.Linear(hidden_sizes[-1], action_dim)
-        self.log_std_head = nn.Linear(hidden_sizes[-1], action_dim)
+        self.model = MLP(
+            input_size=input_size,
+            hidden_sizes=hidden_sizes, 
+            output_size=action_dim, 
+            inner_activation=inner_activation, 
+            output_activation=nn.Tanh()
+            )
+        
+        self.max_action = max_action
 
     def forward(self, x):
-        features = self.feature_extractor(x)
-        mean = self.mean_head(features)
-        log_std = self.log_std_head(features)
-        return mean, log_std
-
-    def predict(self, x):
-        mean, log_std = self.forward(x)
-        std = torch.exp(log_std)
-        return Normal(mean, std)
+        action = self.model(x)
+        return self.max_action * action
