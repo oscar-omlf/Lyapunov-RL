@@ -1,5 +1,5 @@
 import numpy as np
-import dreal as d
+# import dreal as d
 
 
 def dreal_var(n, name='x'):

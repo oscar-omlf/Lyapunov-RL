@@ -47,11 +47,14 @@ class LyapunovACTrainer(Trainer):
 
         self.device = device
 
-        self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
+        self.optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=actor_lr)
+        self.scheduler = StepLR(self.optimizer, step_size=500, gamma=0.8)
 
-        self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
-        self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
+        # self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
+        # self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
+
+        # self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
+        # self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
 
         self.timesteps = 0
 
@@ -108,24 +111,32 @@ class LyapunovACTrainer(Trainer):
         actor_loss = Lc
         critic_loss = Lz + Lr + Lp + Lb
 
-        # Update the actor
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
+        total_loss = actor_loss + critic_loss
 
-        # Update the critic
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        self.optimizer.step()
 
-        # Do a step on the Scheduler
-        self.actor_scheduler.step()
-        self.critic_scheduler.step()
+        self.scheduler.step()
+
+        if False:
+            # Update the actor
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
+
+            # Update the critic
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic_optimizer.step()
+
+            # Do a step on the Scheduler
+            self.actor_scheduler.step()
+            self.critic_scheduler.step()
 
         self.timesteps += 1
         if self.timesteps % 20 == 0:
-            # call func for graph here
-            pass
+            self.plot_level_set_and_trajectories()
 
         return actor_loss.item(), critic_loss.item()
 

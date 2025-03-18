@@ -1,6 +1,6 @@
 import numpy as np
 import torch.nn as nn
-import dreal as d
+# import dreal as d
 
 from util.dreal import dreal_var, dreal_elementwise, dreal_sigmoid
 

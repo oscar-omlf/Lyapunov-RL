@@ -341,7 +341,10 @@ def train_lac():
             ep_actor_losses.append(actor_loss)
             ep_critic_losses.append(critic_loss)
 
-            print(f'Episode {episode + 1}/{num_episodes} - Actor Loss: {actor_loss}, Critic Loss: {critic_loss}')
+        logger.info(f"Episode {episode+1}/{num_episodes} | Actor Loss: {actor_loss:.4f} | Critic Loss: {critic_loss:.4f}")
+
+        if (episode + 1) % 1000 == 0:
+            agent.save()
 
     tracker.add_run_losses('lyAC', ep_actor_losses, ep_critic_losses)
 
