@@ -46,3 +46,16 @@ def sample_out_of_region(num_samples: int, lb: np.ndarray, ub: np.ndarray, scale
     noise = np.random.uniform(0, 0.5, size=x.shape)
     x = x + np.sign(x) * noise
     return x
+
+
+def sample_in_region_gpu(num_samples: int, lb: torch.Tensor, ub: torch.Tensor, device: str) -> torch.Tensor:
+    return torch.rand(num_samples, lb.shape[0], device=device) * (ub - lb) + lb
+
+
+def sample_out_of_region_gpu(num_samples: int, lb: torch.Tensor, ub: torch.Tensor, scale: float, device: str) -> torch.Tensor:
+    x = torch.rand(num_samples, lb.shape[0], device=device) * 2 - 1  
+    ratios = torch.max(torch.abs(x) / (ub * scale), dim=1, keepdim=True).values
+    x = x / ratios
+    noise = torch.rand_like(x) * 0.5
+    x = x + torch.sign(x) * noise
+    return x

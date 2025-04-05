@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import StepLR
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
-from util.sampling import sample_two_headed_gaussian_model, sample_in_region, sample_out_of_region
+from util.sampling import sample_in_region_gpu, sample_out_of_region_gpu
 from util.rk4_step import rk4_step
 from trainers.abstract_trainer import Trainer
 
@@ -47,54 +47,42 @@ class LyapunovACTrainer(Trainer):
 
         self.device = device
 
-        self.optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=actor_lr)
-        self.scheduler = StepLR(self.optimizer, step_size=500, gamma=0.8)
+        self.lb_tensor = torch.tensor(self.lb, dtype=torch.float32, device=self.device)
+        self.ub_tensor = torch.tensor(self.ub, dtype=torch.float32, device=self.device)
 
-        # self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
-        # self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
+        self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
 
-        # self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
-        # self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
+        self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
+        self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
 
         self.timesteps = 0
 
         print('Lyapunov Trainer Initialized!')
 
     def train(self):
-        init_states = []
-        values = []
+        # Use GPU-based sampling and vectorized trajectory simulation
+        init_states = sample_in_region_gpu(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
+        traj, values, conv_flags = self.simulate_trajectories(init_states, max_steps=3000)
+        # Here, 'values' is assumed to be the integrated norm computed during simulation.
+        values = values.to(dtype=torch.float32, device=self.device)
 
-        for _ in range(self.num_paths_sampled):
-            traj, value, _ = self.simulate_trajectory()
-            init_states.append(traj[0])
-            values.append(value)
-
-        init_states = torch.stack(init_states)
-        values = torch.as_tensor(values, dtype=torch.float32, device=self.device)
-
-        actor_loss = 0
-        critic_loss = 0
-
-        # 1) Enforces W(0) = 0
+        # 1) Enforce W(0) = 0
         zeros_tensor = torch.zeros((1, self.state_space), dtype=torch.float32, device=self.device)
         Lz = 5 * torch.square(self.critic_model(zeros_tensor))
 
-        # 2) Enforces W(x) = tanh(alpha * V(x))
+        # 2) Enforce W(x) = tanh(alpha * V(x))
         Wx = self.critic_model(init_states)
         target = torch.tanh(self.alpha * values)
         Lr = F.mse_loss(Wx, target)
 
         # 3) Physics-Informed Loss (PDE residual)
-        init_states = sample_in_region(self.batch_size, self.lb, self.ub)  # Sample from R1
-        init_states = torch.as_tensor(init_states, dtype=torch.float32, device=self.device)
-
-        Wx, grad_Wx = self.critic_model.forward_with_grad(init_states)
-                    
-        us = self.actor_model(init_states)
-        fxu = self.dynamics_fn(init_states, us)
-
-        phix = torch.linalg.vector_norm(init_states, ord=2, dim=1)
-        resid = torch.sum(grad_Wx * fxu.detach(), dim=1) + self.alpha * (1 + Wx) * (1 - Wx) * phix
+        init_states_in = sample_in_region_gpu(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
+        Wx_in, grad_Wx = self.critic_model.forward_with_grad(init_states_in)
+        us = self.actor_model(init_states_in)
+        fxu = self.dynamics_fn(init_states_in, us)
+        phix = torch.linalg.vector_norm(init_states_in, ord=2, dim=1)
+        resid = torch.sum(grad_Wx * fxu.detach(), dim=1) + self.alpha * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
@@ -103,36 +91,23 @@ class LyapunovACTrainer(Trainer):
         Lc = torch.mean(torch.sum(unit_grad.detach() * fxu, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
-        init_states = sample_out_of_region(self.batch_size, self.lb, self.ub, scale=2)  # Sample from R2
-        init_states = torch.as_tensor(init_states, dtype=torch.float32, device=self.device)
-        Wx = self.critic_model(init_states)
-        Lb = 2 * torch.mean(torch.abs(Wx - 1.0))
+        init_states_out = sample_out_of_region_gpu(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
+        Wx_out = self.critic_model(init_states_out)
+        Lb = 2 * torch.mean(torch.abs(Wx_out - 1.0))
 
         actor_loss = Lc
         critic_loss = Lz + Lr + Lp + Lb
 
-        total_loss = actor_loss + critic_loss
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
 
-        self.optimizer.zero_grad()
-        total_loss.backward()
-        self.optimizer.step()
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
 
-        self.scheduler.step()
-
-        if False:
-            # Update the actor
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor_optimizer.step()
-
-            # Update the critic
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
-
-            # Do a step on the Scheduler
-            self.actor_scheduler.step()
-            self.critic_scheduler.step()
+        self.actor_scheduler.step()
+        self.critic_scheduler.step()
 
         self.timesteps += 1
         if self.timesteps % 20 == 0:
@@ -140,70 +115,43 @@ class LyapunovACTrainer(Trainer):
 
         return actor_loss.item(), critic_loss.item()
 
-
     @torch.no_grad()
-    def simulate_trajectory(self, x=None, max_steps=int(1e7)):
+    def simulate_trajectories(self, x: torch.Tensor, max_steps: int = 3000):
         """
-        Simulate a trajectory using an RK4 integrator.
-        
-        This function approximates the continuous-time trajectory of the system:
-            dx/dt = f(x, u)
-        where f is computed by the differentiable dynamics function f_torch.
-        
-        Termination conditions:
-        1. The state norm falls below self.norm_threshold.
-        2. The trajectory stabilizes (the difference between the current state and the state 10 steps ago is very small).
-        3. The integrated state norm exceeds self.integ_threshold.
-        4. The number of steps exceeds max_steps.
-        
-        :param x: (Optional) a starting state tensor of shape [1, nx]. If None, a state is sampled from R1.
-        :param max_steps: Maximum number of simulation steps.
-        :return:
-            traj: Tensor of shape [steps, nx] representing the trajectory.
-            integ_acc: A float representing the integrated norm of the state over time.
-            convergence: Boolean, True if the trajectory converges (i.e., stops because of low norm or stabilization),
-                        False if it stops because the integrated norm threshold is exceeded.
+        Vectorized simulation for a batch of trajectories.
+        :param x: Initial state tensor of shape [B, state_space].
+        :param max_steps: Maximum simulation steps.
+        :return: Final states, integrated norm per trajectory, and convergence flags.
         """
-        integ_acc = 0.0
-        steps = 0
-        
-        # If no starting state is provided, sample one from the region R1.
-        if x is None:
-            x_np = sample_in_region(1, self.lb, self.ub)
-            x = torch.as_tensor(x_np, dtype=torch.float32, device=self.device)
-        
-        traj = [x.clone()]
-        
-        while True:
-            steps += 1
-            # Compute the Euclidean norm of the current state.
-            norm = torch.linalg.vector_norm(x, ord=2).item()
-            integ_acc += norm * self.dt
-            
-            # Terminate if:
-            # (a) the state norm is very low,
-            # (b) the trajectory stabilizes (difference between current state and state 10 steps ago is small),
-            # (c) maximum number of steps is reached.
-            if (norm < self.norm_threshold or 
-                (len(traj) > 10 and torch.linalg.vector_norm(traj[-1] - traj[-10], ord=2).item() < 1e-3) or 
-                steps >= max_steps):
-                return torch.cat(traj, dim=0), integ_acc, True
-            
-            # Alternatively, if the integrated norm exceeds a threshold, we consider it divergent.
-            elif integ_acc > self.integ_threshold:
-                return torch.cat(traj, dim=0), integ_acc, False
-            
-            # Obtain the control input from the actor.
-            # Here we sample from the actor's two-headed Gaussian policy.
-            u = self.actor_model(x)
-            # If the control dimension is 1, ensure u has shape [batch_size, 1].
-            if u.dim() == 1:
-                u = u.unsqueeze(1)
-            
-            # Use RK4 integration to compute the next state.
-            x_next = rk4_step(self.dynamics_fn, traj[-1], u, dt=self.dt)
-            x = x_next.clone()
-            traj.append(x.clone())
+        B = x.shape[0]
+        integ_acc = torch.zeros(B, device=self.device)
+        active = torch.ones(B, dtype=torch.bool, device=self.device)
+        # For stabilization check, store states 10 steps ago
+        buffer = x.clone()
+        for step in range(max_steps):
+            if not active.any():
+                break
+            norm = torch.linalg.vector_norm(x, ord=2, dim=1)
+            integ_acc[active] += norm[active] * self.dt
+            converged = norm < self.norm_threshold
+            if step >= 10:
+                stabilization = torch.linalg.vector_norm(x - buffer, ord=2, dim=1) < 1e-3
+            else:
+                stabilization = torch.zeros_like(norm, dtype=torch.bool)
+            diverged = integ_acc > self.integ_threshold
+            finished = converged | stabilization | diverged
+            active = active & (~finished)
+            if step % 10 == 0:
+                buffer = x.clone()
+            if active.any():
+                u = self.actor_model(x)
+                if u.dim() == 1:
+                    u = u.unsqueeze(1)
+                x_next = rk4_step(self.dynamics_fn, x, u, dt=self.dt)
+                x = torch.where(active.unsqueeze(1), x_next, x)
+        final_norm = torch.linalg.vector_norm(x, ord=2, dim=1)
+        converged = final_norm < self.norm_threshold
+        return x, integ_acc, converged
 
     def plot_level_set_and_trajectories(self):
         # Create a grid covering R2 (boundary scaled by 2)
@@ -214,25 +162,24 @@ class LyapunovACTrainer(Trainer):
         X, Y = np.meshgrid(xx, yy)
         grid_points = np.stack([X.flatten(), Y.flatten()], axis=1)
         grid_tensor = torch.as_tensor(grid_points, dtype=torch.float32, device=self.device)
-        
         with torch.no_grad():
             Z = self.critic_model(grid_tensor).cpu().numpy()
         Z = Z.reshape(X.shape)
-        
         plt.figure(figsize=(6,5))
         cp = plt.contourf(X, Y, Z, levels=50, cmap='viridis')
         plt.colorbar(cp)
         plt.title("Critic Level Set (Lyapunov Function)")
         plt.xlabel("x[0]")
         plt.ylabel("x[1]")
-        
-        # Overlay a few trajectories
-        for _ in range(5):
-            traj, _, converged = self.simulate_trajectory(max_steps=3000)
-            if converged:
-                traj_np = traj.cpu().numpy()
-                plt.plot(traj_np[:, 0], traj_np[:, 1], 'r-', linewidth=1)
-                plt.plot(traj_np[0, 0], traj_np[0, 1], 'ro')  # starting point marker
+
+        # Vectorized simulation: simulate 5 trajectories in parallel
+        init_states = sample_in_region_gpu(5, self.lb_tensor, self.ub_tensor, self.device)
+        trajs, _, conv_flags = self.simulate_trajectories(init_states, max_steps=3000)
+        trajs_np = trajs.cpu().numpy()
+        # Plot each trajectory
+        for i in range(trajs_np.shape[0]):
+            plt.plot(trajs_np[i, :, 0], trajs_np[i, :, 1], 'r-', linewidth=1)
+            plt.plot(trajs_np[i, 0, 0], trajs_np[i, 0, 1], 'ro')
         plt.gca().set_aspect('equal')
         plt.savefig(f"./plots/lyAC_{self.timesteps}.png")
         plt.close()
