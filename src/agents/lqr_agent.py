@@ -65,7 +65,7 @@ class LQRAgent(AbstractAgent):
         u = np.clip(u, -2.0, 2.0)
         return np.array([u], dtype=np.float32)
 
-    def save(self, file_path: str = '../saved_models/') -> None:
+    def save(self, file_path: str = './saved_models/') -> None:
         os.makedirs(file_path, exist_ok=True)
         with open(file_path + "lqr_agent.pkl", "wb") as f:
             pickle.dump({
@@ -77,7 +77,7 @@ class LQRAgent(AbstractAgent):
                 'l': self.l
             }, f)
 
-    def load(self, file_path: str = '../saved_models/') -> None:
+    def load(self, file_path: str = './saved_models/') -> None:
         with open(file_path + "lqr_agent.pkl", "rb") as f:
             data = pickle.load(f)
             self.K = data['K']

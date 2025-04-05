@@ -324,7 +324,7 @@ def train_lac():
     }
         
     
-    num_episodes = 1000
+    num_episodes = 3000
 
     tracker = MetricsTracker()
     

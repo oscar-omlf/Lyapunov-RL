@@ -81,7 +81,7 @@ class ActorCriticAgent(AbstractAgent):
 
         return action.cpu().numpy()
 
-    def save(self, file_path='../saved_models/') -> None:
+    def save(self, file_path='./saved_models/') -> None:
         """
         Save the actor and critic models.
 
@@ -91,7 +91,7 @@ class ActorCriticAgent(AbstractAgent):
         torch.save(self._actor_model.state_dict(), file_path + "ac_actor_model.pth")
         torch.save(self._critic_model.state_dict(), file_path + "ac_critic_model.pth")
 
-    def load(self, file_path='../saved_models/') -> None:
+    def load(self, file_path='./saved_models/') -> None:
         """
         Load the actor and critic models.
 

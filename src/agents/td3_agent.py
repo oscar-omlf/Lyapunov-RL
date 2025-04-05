@@ -101,7 +101,7 @@ class TD3Agent(AbstractAgent):
         action = np.clip(action + noise, -self.max_action, self.max_action)
         return action
 
-    def save(self, file_path='../saved_models/') -> None:
+    def save(self, file_path='./saved_models/') -> None:
         """
         Save the actor and critic networks.
         """
@@ -109,7 +109,7 @@ class TD3Agent(AbstractAgent):
         torch.save(self._actor_model.state_dict(), os.path.join(file_path, "td3_actor.pth"))
         torch.save(self._critic_model.state_dict(), os.path.join(file_path, "td3_critic.pth"))
 
-    def load(self, file_path='../saved_models/') -> None:
+    def load(self, file_path='./saved_models/') -> None:
         """
         Load the actor and critic networks, and synchronize the trainer's target networks.
         """
