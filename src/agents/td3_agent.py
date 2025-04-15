@@ -39,14 +39,14 @@ class TD3Agent(AbstractAgent):
         critic_hidden_sizes = config.get("critic_hidden_sizes", (64, 64))
         
         # Initialize the actor and critic models with the tunable architectures
-        self._actor_model = TD3Actor(
+        self.actor_model = TD3Actor(
             input_size=state_dim,
             hidden_sizes=actor_hidden_sizes,
             action_dim=action_dim,
             max_action=self.max_action
         ).to(device=self.device)
         
-        self._critic_model = TD3Critic(
+        self.critic_model = TD3Critic(
             state_dim=state_dim,
             hidden_sizes=critic_hidden_sizes,
             action_dim=action_dim
@@ -54,8 +54,8 @@ class TD3Agent(AbstractAgent):
 
         self._trainer = TD3Trainer(
             buffer=self._replay_buffer,
-            actor=self._actor_model,
-            critic=self._critic_model,
+            actor=self.actor_model,
+            critic=self.critic_model,
             gamma=self.gamma,
             tau=self.tau,
             policy_freq=self.policy_freq,
@@ -95,7 +95,7 @@ class TD3Agent(AbstractAgent):
         """
         state_t = torch.as_tensor(state, device=self.device, dtype=torch.float32)
         with torch.no_grad():
-            action = self._actor_model(state_t.unsqueeze(0))
+            action = self.actor_model(state_t.unsqueeze(0))
         action = action.cpu().numpy().flatten()
         noise = np.random.normal(0, self.expl_noise * self.max_action, size=action.shape)
         action = np.clip(action + noise, -self.max_action, self.max_action)
@@ -106,14 +106,14 @@ class TD3Agent(AbstractAgent):
         Save the actor and critic networks.
         """
         os.makedirs(file_path, exist_ok=True)
-        torch.save(self._actor_model.state_dict(), os.path.join(file_path, "td3_actor.pth"))
-        torch.save(self._critic_model.state_dict(), os.path.join(file_path, "td3_critic.pth"))
+        torch.save(self.actor_model.state_dict(), os.path.join(file_path, "td3_actor.pth"))
+        torch.save(self.critic_model.state_dict(), os.path.join(file_path, "td3_critic.pth"))
 
     def load(self, file_path='./saved_models/') -> None:
         """
         Load the actor and critic networks, and synchronize the trainer's target networks.
         """
-        self._actor_model.load_state_dict(torch.load(os.path.join(file_path, "td3_actor.pth")))
-        self._critic_model.load_state_dict(torch.load(os.path.join(file_path, "td3_critic.pth")))
-        self._trainer.actor_target = copy.deepcopy(self._actor_model)
-        self._trainer.critic_target = copy.deepcopy(self._critic_model)
+        self.actor_model.load_state_dict(torch.load(os.path.join(file_path, "td3_actor.pth")))
+        self.critic_model.load_state_dict(torch.load(os.path.join(file_path, "td3_critic.pth")))
+        self._trainer.actor_target = copy.deepcopy(self.actor_model)
+        self._trainer.critic_target = copy.deepcopy(self.critic_model)

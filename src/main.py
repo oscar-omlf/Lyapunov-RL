@@ -268,8 +268,6 @@ def train_default():
     config_lqr = {
         "agent_str": "LQR",
         "g": 10.0,
-        "Q": np.diag([100., 7.66800711]), 
-        "R": np.array([[0.52253548]]),
         "save_models": True,
         "show_last_episode": False,
     }
@@ -324,7 +322,7 @@ def train_lac():
     }
         
     
-    num_episodes = 3000
+    num_episodes = 1000
 
     tracker = MetricsTracker()
     
@@ -348,7 +346,7 @@ def train_lac():
 
     tracker.add_run_losses('lyAC', ep_actor_losses, ep_critic_losses)
 
-    tracker.save_top10_plots(folder='plots')
+    tracker.save_top10_losses_plot(folder='plots')
 
 if __name__ == "__main__":
     train_lac()

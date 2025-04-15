@@ -31,13 +31,13 @@ class LyapunovACAgent(AbstractAgent):
 
         self.max_action = 2.0
         
-        self._actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
-        self._critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
+        self.actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
+        self.critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
 
 
         self._trainer = LyapunovACTrainer(
-            actor=self._actor_model,
-            critic=self._critic_model,
+            actor=self.actor_model,
+            critic=self.critic_model,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
             alpha=self.alpha,
@@ -60,16 +60,16 @@ class LyapunovACAgent(AbstractAgent):
 
     def policy(self, state):
         s_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-        action = self._actor_model(s_tensor)
+        action = self.actor_model(s_tensor)
         return action.cpu().numpy().flatten()
 
     def save(self, file_path='./saved_models/'):
-        torch.save(self._actor_model.state_dict(), file_path + "lyapunov_actor_model.pth")
-        torch.save(self._critic_model.state_dict(), file_path + "lyapunov_critic_model.pth")
+        torch.save(self.actor_model.state_dict(), file_path + "lyapunov_actor_model.pth")
+        torch.save(self.critic_model.state_dict(), file_path + "lyapunov_critic_model.pth")
 
     def load(self, file_path='./saved_models/'):
-        self._actor_model.load_state_dict(torch.load(file_path + "lyapunov_actor_model.pth"))
-        self._critic_model.load_state_dict(torch.load(file_path + "lyapunov_critic_model.pth"))
+        self.actor_model.load_state_dict(torch.load(file_path + "lyapunov_actor_model.pth"))
+        self.critic_model.load_state_dict(torch.load(file_path + "lyapunov_critic_model.pth"))
 
     def compute_lyapunov(self, points: np.ndarray) -> np.ndarray:
         """
@@ -78,5 +78,5 @@ class LyapunovACAgent(AbstractAgent):
         """
         obs_t = torch.as_tensor(points, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            W_vals = self._critic_model(obs_t)
+            W_vals = self.critic_model(obs_t)
         return W_vals.cpu().numpy()

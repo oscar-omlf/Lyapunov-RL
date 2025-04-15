@@ -283,3 +283,50 @@ class MetricsTracker:
             fig_losses.tight_layout()
             fig_losses.savefig(os.path.join(folder, "top10_losses.png"))
             plt.close(fig_losses)
+
+    def save_top10_losses_plot(self, folder: str = "plots") -> None:
+        """
+        Save the combined top 10 losses plot (actor and critic) for the top 10 agents.
+        If no return data is available to rank agents, fall back to using actor loss data.
+        """
+        os.makedirs(folder, exist_ok=True)
+        with self._lock:
+            # Attempt to determine top 10 agents based on final return.
+            if self._returns:
+                agent_final_returns = {}
+                for agent_id, ep_dict in self._returns.items():
+                    final_ep = max(ep_dict.keys())
+                    aggregator = ep_dict[final_ep]
+                    mean, _ = aggregator.get_curr_mean_variance()
+                    agent_final_returns[agent_id] = mean
+
+                top_agents = sorted(agent_final_returns.items(), key=lambda x: x[1], reverse=True)[:10]
+                top_agent_ids = [agent_id for agent_id, _ in top_agents]
+            else:
+                # Fallback: use all agents with loss data.
+                top_agent_ids = list(self._actor_losses.keys())
+
+            # Create and save the Combined Losses Plot (Actor and Critic together).
+            fig_losses, ax_losses = plt.subplots(figsize=(15, 6))
+            for agent_id in top_agent_ids:
+                if agent_id in self._actor_losses:
+                    episodes_actor, means_actor, ses_actor = self.get_avg_actor_losses(agent_id)
+                    ax_losses.plot(episodes_actor, means_actor, label=f'{agent_id} Actor Loss')
+                    ax_losses.fill_between(episodes_actor,
+                                        np.array(means_actor) - np.array(ses_actor),
+                                        np.array(means_actor) + np.array(ses_actor),
+                                        alpha=0.2)
+                if agent_id in self._critic_losses:
+                    episodes_critic, means_critic, ses_critic = self.get_avg_critic_losses(agent_id)
+                    ax_losses.plot(episodes_critic, means_critic, label=f'{agent_id} Critic Loss')
+                    ax_losses.fill_between(episodes_critic,
+                                        np.array(means_critic) - np.array(ses_critic),
+                                        np.array(means_critic) + np.array(ses_critic),
+                                        alpha=0.2)
+            ax_losses.set_title('Top 10 Agents Loss History (Actor & Critic)')
+            ax_losses.set_xlabel('Episodes')
+            ax_losses.set_ylabel('Average Loss')
+            ax_losses.legend(loc='best', fontsize='medium')
+            fig_losses.tight_layout()
+            fig_losses.savefig(os.path.join(folder, "top10_losses.png"))
+            plt.close(fig_losses)

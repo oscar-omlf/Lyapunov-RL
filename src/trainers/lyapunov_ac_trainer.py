@@ -56,9 +56,13 @@ class LyapunovACTrainer(Trainer):
         self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
         self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
 
+        self.optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=actor_lr)
+        self.scheduler = StepLR(self.optimizer, step_size=500, gamma=0.8)
+
         self.timesteps = 0
 
         print('Lyapunov Trainer Initialized!')
+        print('V2')
 
     def train(self):
         # Use GPU-based sampling and vectorized trajectory simulation
@@ -98,16 +102,24 @@ class LyapunovACTrainer(Trainer):
         actor_loss = Lc
         critic_loss = Lz + Lr + Lp + Lb
 
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
+        if True:
+            self.actor_optimizer.zero_grad()
+            actor_loss.backward()
+            self.actor_optimizer.step()
 
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
+            self.critic_optimizer.zero_grad()
+            critic_loss.backward()
+            self.critic_optimizer.step()
 
-        self.actor_scheduler.step()
-        self.critic_scheduler.step()
+            self.actor_scheduler.step()
+            self.critic_scheduler.step()
+
+        if False:
+            total_loss = actor_loss + critic_loss
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            self.optimizer.step()
+            self.scheduler.step()
 
         self.timesteps += 1
         if self.timesteps % 20 == 0:
@@ -171,7 +183,6 @@ class LyapunovACTrainer(Trainer):
         x_min, x_max = self.lb[0]*2, self.ub[0]*2
         y_min, y_max = self.lb[1]*2, self.ub[1]*2
 
-        print(x_min, x_max, y_min, y_max)
         # Use 3000 points and 100 contour levels as in the original
         xx = np.linspace(x_min, x_max, 3000)
         yy = np.linspace(y_min, y_max, 3000)

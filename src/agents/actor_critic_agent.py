@@ -28,17 +28,17 @@ class ActorCriticAgent(AbstractAgent):
         critic_hidden_sizes = config.get("critic_hidden_sizes", (64, 64))
         
         # Initialize the actor and critic models with the tunable architectures
-        self._actor_model = ACActor(input_size=state_dim,
+        self.actor_model = ACActor(input_size=state_dim,
                                     hidden_sizes=actor_hidden_sizes,
                                     action_dim=action_dim).to(device=self.device)
         
-        self._critic_model = ACCritic(input_size=state_dim,
+        self.critic_model = ACCritic(input_size=state_dim,
                                       hidden_sizes=critic_hidden_sizes).to(device=self.device)
 
         self._trainer = ACTrainer(
             buffer=self._replay_buffer,
-            actor=self._actor_model,
-            critic=self._critic_model,
+            actor=self.actor_model,
+            critic=self.critic_model,
             gamma=self.gamma,
             n_steps=self.n_steps,
             policy_freq=self.policy_freq,
@@ -77,7 +77,7 @@ class ActorCriticAgent(AbstractAgent):
         """
         state = torch.from_numpy(state).to(device=self.device, dtype=torch.float32)
 
-        action, _ = sample_two_headed_gaussian_model(self._actor_model, state)
+        action, _ = sample_two_headed_gaussian_model(self.actor_model, state)
 
         return action.cpu().numpy()
 
@@ -88,8 +88,8 @@ class ActorCriticAgent(AbstractAgent):
         :param file_path: The directory path to save the models.
         """
         os.makedirs(file_path, exist_ok=True)
-        torch.save(self._actor_model.state_dict(), file_path + "ac_actor_model.pth")
-        torch.save(self._critic_model.state_dict(), file_path + "ac_critic_model.pth")
+        torch.save(self.actor_model.state_dict(), file_path + "ac_actor_model.pth")
+        torch.save(self.critic_model.state_dict(), file_path + "ac_critic_model.pth")
 
     def load(self, file_path='./saved_models/') -> None:
         """
@@ -97,8 +97,8 @@ class ActorCriticAgent(AbstractAgent):
 
         :param file_path: The directory path to load the models from.
         """
-        self._actor_model.load_state_dict(torch.load(file_path + "ac_actor_model.pth", weights_only=True))
-        self._critic_model.load_state_dict(torch.load(file_path + "ac_critic_model.pth"))
+        self.actor_model.load_state_dict(torch.load(file_path + "ac_actor_model.pth", weights_only=True))
+        self.critic_model.load_state_dict(torch.load(file_path + "ac_critic_model.pth"))
 
 
     def compute_lyapunov(self, points: np.ndarray) -> np.ndarray:
@@ -122,6 +122,6 @@ class ActorCriticAgent(AbstractAgent):
 
         points_tensor = torch.tensor(full_obs, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            lyapunov_values = self._critic_model(points_tensor)
+            lyapunov_values = self.critic_model(points_tensor)
         return lyapunov_values.cpu().numpy().flatten()
 
