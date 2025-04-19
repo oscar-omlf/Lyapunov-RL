@@ -252,19 +252,6 @@ def train_ac_bayes_opt():
 
 def train_default():
     env_str = "Pendulum-v1"
-    config_ac = {
-        "agent_str": "AC",
-        "actor_lr": 0.005,
-        "critic_lr": 0.009,
-        "gamma": 0.95,
-        "n_steps": 1,
-        "policy_freq": 2,
-        "actor_hidden_sizes": (256, 64),
-        "critic_hidden_sizes": (64, 64),
-        "save_models": False,
-        "show_last_episode": True,
-    }
-
     config_lqr = {
         "agent_str": "LQR",
         "g": 10.0,
@@ -299,7 +286,7 @@ def train_default():
 
     tracker.save_top10_plots(folder="plots")
 
-    logger.info("Hyperparameter optimization completed.")
+    logger.info("Training completed.")
 
 
 def train_lac():
