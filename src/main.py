@@ -8,7 +8,7 @@ import logging
 from agents.abstract_agent import AbstractAgent
 from agents.agent_factory import AgentFactory
 from util.metrics_tracker import MetricsTracker
-from util.dynamics import pendulum_dynamics
+from util.dynamics import pendulum_dynamics, original_pendulum_dynamics
 from util.compare_doa import compare_doa
 
 log_dir = "logs"
@@ -254,7 +254,7 @@ def train_default():
     env_str = "Pendulum-v1"
     config_lqr = {
         "agent_str": "LQR",
-        "g": 10.0,
+        "g": 9.81,
         "save_models": True,
         "show_last_episode": False,
     }
@@ -293,9 +293,9 @@ def train_lac():
     config_lac = {
         "agent_str": "Lyapunov-AC",
         "alpha": 0.2,
-        "actor_lr": 1e-3,
+        "actor_lr": 2e-3,
         "critic_lr": 2e-3,
-        "dynamics_fn": pendulum_dynamics,
+        "dynamics_fn": original_pendulum_dynamics,
         "batch_size": 64,
         "num_paths_sampled": 8,
         "dt": 0.003,
@@ -307,9 +307,8 @@ def train_lac():
         "state_space": 2,
         "action_space": 1
     }
-        
     
-    num_episodes = 1000
+    num_episodes = 3000
 
     tracker = MetricsTracker()
     

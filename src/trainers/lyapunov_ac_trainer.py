@@ -62,7 +62,6 @@ class LyapunovACTrainer(Trainer):
         self.timesteps = 0
 
         print('Lyapunov Trainer Initialized!')
-        print('V2')
 
     def train(self):
         # Use GPU-based sampling and vectorized trajectory simulation
@@ -90,9 +89,10 @@ class LyapunovACTrainer(Trainer):
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
-        grad_norm = torch.linalg.vector_norm(grad_Wx, ord=2, dim=1, keepdim=True)
-        unit_grad = grad_Wx / (grad_norm + 1e-8)
-        Lc = torch.mean(torch.sum(unit_grad.detach() * fxu, dim=1))
+        # grad_norm = torch.linalg.vector_norm(grad_Wx, ord=2, dim=1, keepdim=True)
+        # unit_grad = grad_Wx / (grad_norm + 1e-8)
+        # Lc = torch.mean(torch.sum(unit_grad.detach() * fxu, dim=1))
+        Lc = torch.mean(torch.sum(grad_Wx.detach() * fxu, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
         init_states_out = sample_out_of_region_gpu(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
@@ -102,7 +102,7 @@ class LyapunovACTrainer(Trainer):
         actor_loss = Lc
         critic_loss = Lz + Lr + Lp + Lb
 
-        if True:
+        if False:
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
             self.actor_optimizer.step()
@@ -114,8 +114,8 @@ class LyapunovACTrainer(Trainer):
             self.actor_scheduler.step()
             self.critic_scheduler.step()
 
-        if False:
-            total_loss = actor_loss + critic_loss
+        if True:
+            total_loss = 0.5 * (actor_loss + critic_loss)
             self.optimizer.zero_grad()
             total_loss.backward()
             self.optimizer.step()

@@ -29,7 +29,7 @@ class LyapunovACAgent(AbstractAgent):
         actor_hidden_sizes = config.get("actor_hidden_sizes", (5, 5))
         critic_hidden_sizes = config.get("critic_hidden_sizes", (20, 20))
 
-        self.max_action = 2.0
+        self.max_action = 1.0
         
         self.actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
         self.critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
@@ -70,13 +70,3 @@ class LyapunovACAgent(AbstractAgent):
     def load(self, file_path='./saved_models/'):
         self.actor_model.load_state_dict(torch.load(file_path + "lyapunov_actor_model.pth"))
         self.critic_model.load_state_dict(torch.load(file_path + "lyapunov_critic_model.pth"))
-
-    def compute_lyapunov(self, points: np.ndarray) -> np.ndarray:
-        """
-        Compute the Lyapunov function values W(x) using the critic network.
-        This function is used to estimate the Domain of Attraction (DoA).
-        """
-        obs_t = torch.as_tensor(points, dtype=torch.float32, device=self.device)
-        with torch.no_grad():
-            W_vals = self.critic_model(obs_t)
-        return W_vals.cpu().numpy()
