@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg
 import torch
 from models.mlpmultivariategaussian import TwoHeadedMLP
 from torch.distributions import Distribution
@@ -59,3 +60,30 @@ def sample_out_of_region_gpu(num_samples: int, lb: torch.Tensor, ub: torch.Tenso
     noise = torch.rand_like(x) * 0.5
     x = x + torch.sign(x) * noise
     return x
+
+
+def sample_from_ellipsoid(self, c, Nv, x_star, L_cholesky):
+    if c <= 0:
+        return np.array([x_star])
+    
+    Z = np.random.randn(self.Nv, self.state_dim)
+
+    # Transoform using Cholesky decomposition P = L L^T
+    # We need inv(L^T) * Z, equivalent to solving L^T * Y = Z for Y
+    # Y = scipy.linalg.solve_triangular(self.L_cholesky.T, Z.T, lower=False).T
+
+    try:
+        Y = scipy.linalg.solve_triangular(L_cholesky.T, Z.T, lower=False).T
+    except np.linalg.LinAlgError:
+        print("Error solving traingular system during sampling. Check Cholesky decomposition.")
+        return np.array([x_star] * Nv)
+    
+    norms_z_squares = np.sum(Z**2, axis=1)
+    norms_z_squares[norms_z_squares == 0] = 1e-6
+
+    Y_normalized = Y / np.sqrt(norms_z_squares)[:, np.newaxis]
+
+    Y_scaled = Y_normalized * np.sqrt(c)
+
+    X_samples = Y_scaled + x_star
+    return X_samples
