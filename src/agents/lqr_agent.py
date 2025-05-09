@@ -1,7 +1,10 @@
 import os
+import math
 import numpy as np
 import pickle
+
 from agents.abstract_agent import AbstractAgent
+
 
 class LQRAgent(AbstractAgent):
     def __init__(self, config: dict):
@@ -9,6 +12,11 @@ class LQRAgent(AbstractAgent):
         self.g = config['g']    # acceleration due to gravity in m/s^2
         self.m = 1.0            # mass in kg
         self.l = 1.0            # length in m
+
+
+        state_dim = self.state_space.shape[0]
+        self.x_star = config.get("x_star", np.zeros(state_dim, dtype=np.float64))
+
 
         # For LQR design, we need a 2D state: [theta, theta_dot],
         # where theta = 0 is the upright position.
@@ -133,13 +141,16 @@ class LQRAgent(AbstractAgent):
         P = np.real(Y @ np.linalg.inv(X))
         
         return P
-
-    def ellipse_area(self, c=1.0):
-        """
-        Returns area of the ellipse { x : x^T P x <= c } in 2D.
-        The formula is pi * c / sqrt(det(P)), assuming P is positive-definite.
-        """
-        detP = np.linalg.det(self.P)
-        if detP <= 0:
-            return 0.0
-        return np.pi * c / np.sqrt(detP)
+    
+    def lyapunov_value(self, state):
+        """Computes V(x) = (x - x*)^T P (x - x*) [cite: 137]."""
+        delta_x = state.flatten() - self.x_star
+        P = self.lqr_agent.P
+        v_x = delta_x @ P @ delta_x
+        # Check for NaN before returning
+        if math.isnan(v_x):
+             print(f"Warning: NaN detected in Lyapunov calculation for state {state}. Returning infinity.")
+             return float('inf')
+        if v_x < 0:
+             print(f"Warning: Negative Lyapunov value detected for state {state}.")
+        return max(0, v_x)
