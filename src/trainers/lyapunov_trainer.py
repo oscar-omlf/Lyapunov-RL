@@ -129,7 +129,7 @@ class LyapunovTrainer(Trainer):
 
     def train(self):
         # Use GPU-based sampling and vectorized trajectory simulation
-        init_states = sample_in_region_gpu(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
+        init_states = sample_in_region_torch(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
         traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
         # Here, 'values' is assumed to be the integrated norm computed during simulation.
         values = values.to(dtype=torch.float32, device=self.device)
