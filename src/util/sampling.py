@@ -49,11 +49,11 @@ def sample_out_of_region(num_samples: int, lb: np.ndarray, ub: np.ndarray, scale
     return x
 
 
-def sample_in_region_gpu(num_samples: int, lb: torch.Tensor, ub: torch.Tensor, device: str) -> torch.Tensor:
+def sample_in_region_torch(num_samples: int, lb: torch.Tensor, ub: torch.Tensor, device: str) -> torch.Tensor:
     return torch.rand(num_samples, lb.shape[0], device=device) * (ub - lb) + lb
 
 
-def sample_out_of_region_gpu(num_samples: int, lb: torch.Tensor, ub: torch.Tensor, scale: float, device: str) -> torch.Tensor:
+def sample_out_of_region_torch(num_samples: int, lb: torch.Tensor, ub: torch.Tensor, scale: float, device: str) -> torch.Tensor:
     x = torch.rand(num_samples, lb.shape[0], device=device) * 2 - 1  
     ratios = torch.max(torch.abs(x) / (ub * scale), dim=1, keepdim=True).values
     x = x / ratios
