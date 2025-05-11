@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from agents.abstract_agent import AbstractAgent
 from trainers.abstract_trainer import Trainer
-from util.sampling import sample_in_region_gpu, sample_out_of_region_gpu
+from util.sampling import sample_in_region_torch, sample_out_of_region_torch
 from util.rk4_step import rk4_step
 
 
@@ -30,13 +30,13 @@ class LyapunovTrainer(Trainer):
         state_dim: int,
         r1_bounds: list,
         device: str,
-        dual_controller: dict | bool
+        dual_controller_components: dict | bool
     ):
         super().__init__()
         self.actor_model = actor
         self.critic_model = critic
 
-        self.alpha = alpha
+        self.alpha_zubov = alpha
         self.batch_size = batch_size
         self.num_paths_sampled = num_paths_sampled
         self.norm_threshold = norm_threshold
@@ -53,37 +53,78 @@ class LyapunovTrainer(Trainer):
         self.lb_tensor = torch.tensor(self.lb, dtype=torch.float32, device=self.device)
         self.ub_tensor = torch.tensor(self.ub, dtype=torch.float32, device=self.device)
 
-        self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
+        # self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
+        # self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
 
-        self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
-        self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
+        # self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
+        # self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
 
         self.optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=actor_lr)
         self.scheduler = StepLR(self.optimizer, step_size=500, gamma=0.8)
 
         self.timesteps = 0
-
-        self.dual_controller = dual_controller
+        self.dual_controller_components = dual_controller_components
 
         # If we are doing dual-policy LAS-GLOBAL
-        if self.dual_controller:
-            self.lqr_agent = dual_controller["LQR"]
-            self.blending_function = dual_controller["BLENDING_FUNCTION"]
-
-        print('Lyapunov Trainer Initialized!')
-
-    def lyapunov_value(self, state):
-        Wx = self.critic_model(state)
-
-        if isinstance(self.dual_controller, dict):
-            W_loc = self.lqr_agent.policy(state)
-            h2 = self.blending_function.get_h2(state)
-            lyapunov_value = h2 * (Wx - W_loc)
+        if self.dual_controller_components:
+            self.lqr_agent = dual_controller_components["LQR"]
+            self.blending_function = dual_controller_components["BLENDING_FUNCTION"]
+            print('Lyapunov Trainer Initialized with Dual Controller (LQR + Blending)!')
         else:
-            lyapunov_value = Wx
+            print('Lyapunov Trainer Initialized (Standalone LyAC)!')
 
-        return lyapunov_value
+    def _get_current_policy_actions(self, state):
+        """
+        Helper to get actions from the current policy (either learnt or composite).
+        """
+        actions_learned = self.actor_model(state)
+
+        if isinstance(self.dual_controller_components, dict):
+            actions_loc = self.lqr_agent.policy(state)
+
+            h1_blend = self.blending_function.get_h1(state)
+
+            # TODO: Remove this check
+            if h1_blend.ndim == 1:
+                print('h1 is a scalar, not a tensor. This is probably a bug.')
+                h1_blend = h1_blend.unsqueeze(-1)
+
+            current_actions = actions_loc + h1_blend * (actions_learned - actions_loc)
+        else:
+            current_actions = actions_learned
+
+        return current_actions
+
+
+    def lyapunov_value(self, state: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
+        """
+        Computes the Lyapunov/ Zubov value W(x).
+        If dual_controller is active, computes W_composite(x).
+        Returns W(x) and optionally its gradient w.r.t. state.
+        """
+        if requires_grad and not state.requires_grad:
+            state.requires_grad_(True)
+
+        Wx_learned = self.critic_model(state)
+
+        if self.dual_controller_components:
+            V_loc = self.blending_function.get_lyapunov_value(state)
+            W_loc = torch.tanh(self.alpha_zubov * V_loc)
+
+            h2 = self.blending_function.get_h2(state)
+            Wx_final = W_loc + h2 * (Wx_learned - W_loc)
+        else:
+            Wx_final = Wx_learned
+
+        grad_Wx = None
+        if requires_grad:
+            if Wx_final.requires_grad:
+                grad_Wx = torch.autograd.grad(Wx_final.sum(), state, create_graph=True, retain_graph=True)[0] 
+            else:
+                print('Wx_final does not require grad. Setting grad_Wx to zero.')
+                grad_Wx = torch.zeros_like(Wx_final)
+
+        return Wx_final, grad_Wx
 
 
     def train(self):
@@ -95,34 +136,39 @@ class LyapunovTrainer(Trainer):
 
         # 1) Enforce W(0) = 0
         zeros_tensor = torch.zeros((1, self.state_dim), dtype=torch.float32, device=self.device)
-        Lz = 5 * torch.square(self.critic_model(zeros_tensor))
+        W_zeros, _ = self.lyapunov_value(zeros_tensor)
+        Lz = 5 * torch.square(W_zeros)
 
-        print(f'W(0) {self.critic_model(zeros_tensor)}')
+        print(f'W(0) {self.lyapunov_value(zeros_tensor)}')
         print(f'Lz loss: {Lz}')
 
         # 2) Enforce W(x) = tanh(alpha * V(x))
-        Wx = self.critic_model(init_states)
-        target = torch.tanh(self.alpha * values)
-        Lr = F.mse_loss(Wx, target)
+        Wx_Lr, _ = self.lyapunov_value(init_states)
+        target = torch.tanh(self.alpha_zubov * values)
+        Lr = F.mse_loss(Wx_Lr, target)
 
         # 3) Physics-Informed Loss (PDE residual)
-        init_states_in = sample_in_region_gpu(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
-        Wx_in, grad_Wx = self.critic_model.forward_with_grad(init_states_in)
-        us = self.actor_model(init_states_in)
-        fxu = self.dynamics_fn(init_states_in, us)
+        init_states_in = sample_in_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
+        Wx_in, grad_Wx_in = self.lyapunov_value(init_states_in, requires_grad=True)
+
+        current_actions = self._get_current_policy_actions(init_states_in)
+        current_fxu = self.dynamics_fn(init_states_in, current_actions)
+
         phix = torch.linalg.vector_norm(init_states_in, ord=2, dim=1)
-        resid = torch.sum(grad_Wx * fxu.detach(), dim=1) + self.alpha * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
+
+        resid = torch.sum(grad_Wx_in * current_fxu.detach(), dim=1) + \
+            self.alpha_zubov * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
         # grad_norm = torch.linalg.vector_norm(grad_Wx, ord=2, dim=1, keepdim=True)
         # unit_grad = grad_Wx / (grad_norm + 1e-8)
         # Lc = torch.mean(torch.sum(unit_grad.detach() * fxu, dim=1))
-        Lc = torch.mean(torch.sum(grad_Wx.detach() * fxu, dim=1))
+        Lc = torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
-        init_states_out = sample_out_of_region_gpu(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
-        Wx_out = self.critic_model(init_states_out)
+        init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
+        Wx_out = self.lyapunov_value(init_states_out)
         Lb = 2 * torch.mean(torch.abs(Wx_out - 1.0))
 
         actor_loss = Lc
@@ -166,43 +212,63 @@ class LyapunovTrainer(Trainer):
         B = x.shape[0]
         integ_acc = torch.zeros(B, device=self.device)
         active = torch.ones(B, dtype=torch.bool, device=self.device)
+
+        current_x = x.clone()
         x_hist = [x.clone()]
-        buffer = x.clone()
+
+        buffer_x = x.clone()
 
         for step in range(max_steps):
             if not active.any():
                 break
 
-            norm = torch.linalg.vector_norm(x, ord=2, dim=1)
-            integ_acc[active] += norm[active] * self.dt
+            active_indices = torch.where(active)[0]
+            if len(active_indices) == 0:
+                print('Should not happen: no active trajectories')
+                break
 
-            converged = norm < self.norm_threshold
+            current_active_x = current_x[active]
+
+            # Compute the norm of active trajectories
+            norm_active = torch.linalg.vector_norm(current_active_x, ord=2, dim=1)
+            integ_acc[active] += norm_active * self.dt
+
+            # Check if the trajectories have converged
+            converged_active = norm_active < self.norm_threshold
+
             if step >= 10:
-                stabilization = torch.linalg.vector_norm(x - buffer, ord=2, dim=1) < 1e-3
-            else:
-                stabilization = torch.zeros_like(norm, dtype=torch.bool)
-            diverged = integ_acc > self.integ_threshold
-            finished = converged | stabilization | diverged
-            active = active & (~finished)
+                stabilization_active = torch.linalg.vector_norm(current_active_x - buffer_x[active], ord=2, dim=1) < 1e-3
+
+            diverged_active = integ_acc[active] > self.integ_threshold
+            finished_active = converged_active | stabilization_active | diverged_active
+
+            active[active_indices[finished_active]] = False
 
             if step % 10 == 0:
-                buffer = x.clone()
+                buffer_x = current_x.clone()
 
             if active.any():
-                u = self.actor_model(x)
-                if u.dim() == 1:
-                    u = u.unsqueeze(1)
-                x_next = rk4_step(self.dynamics_fn, x, u, dt=self.dt)
-                # Only update the active trajectories
-                x = torch.where(active.unsqueeze(1), x_next, x)
-                x_hist.append(x.clone())
+                u_active = self._get_current_policy_actions(current_x[active])
+                
+                if u_active.dim() == 1 and u_active.shape[0] == current_x[active].shape[0]:
+                    u_active = u_active.unsqueeze(1)
+
+                # Compute the next state of the active trajectories
+                x_next_active = rk4_step(self.dynamics_fn, current_x[active], u_active, dt=self.dt)
+
+                # Update the active trajectories
+                current_x[active] = x_next_active
+
+            x_hist.append(current_x.clone())
 
         # Stack the history along a new time dimension: shape [B, T, state_dim]
         traj = torch.stack(x_hist, dim=1)
-        final_norm = torch.linalg.vector_norm(x, ord=2, dim=1)
-        converged = final_norm < self.norm_threshold
 
-        return traj, integ_acc, converged
+        # Check if the trajectories have converged
+        final_norm = torch.linalg.vector_norm(current_x, ord=2, dim=1)
+        converged_end = final_norm < self.norm_threshold
+
+        return traj, integ_acc, converged_end
 
     def plot_level_set_and_trajectories(self):
         # Create a grid covering R2 (boundary scaled by 2)
@@ -217,7 +283,7 @@ class LyapunovTrainer(Trainer):
         grid_tensor = torch.as_tensor(grid_points, dtype=torch.float32, device=self.device)
         
         with torch.no_grad():
-            Z = self.critic_model(grid_tensor).cpu().numpy()
+            Z = self.lyapunov_value(grid_tensor).cpu().numpy()
         Z = Z.reshape(X.shape)
         
         plt.figure(figsize=(6,5))
@@ -231,7 +297,7 @@ class LyapunovTrainer(Trainer):
         plt.ylim(y_min, y_max)
 
         # Vectorized simulation: simulate 5 trajectories in parallel
-        init_states = sample_in_region_gpu(5, self.lb_tensor, self.ub_tensor, self.device)
+        init_states = sample_in_region_torch(5, self.lb_tensor, self.ub_tensor, self.device)
         trajs, _, _ = self.simulate_trajectories(init_states, max_steps=3000)
         trajs_np = trajs.cpu().numpy()
         

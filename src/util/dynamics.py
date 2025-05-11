@@ -29,6 +29,33 @@ def gym_pendulum_dynamics(xs, us):
     return dxdt
 
 
+def pendulum_dynamics_torch(
+    state: torch.Tensor,
+    action: torch.Tensor,
+    g: float = 9.81,
+    m: float = 0.15,
+    l: float = 0.5
+) -> torch.Tensor:
+    """
+    Returns the time derivative dx/dt of the pendulum state x = [theta, theta_dot].
+    Supports state of shape (..., 2) and scalar or broadcastable action.
+    """
+    # state[..., 0] = theta, state[..., 1] = theta_dot
+    theta = state[..., 0]
+    theta_dot = state[..., 1]
+
+    # compute angular acceleration
+    theta_ddot = (g / l) * torch.sin(theta) - (3.0 / (m * l**2)) * action
+
+    # pack the derivatives
+    dtheta = theta_dot
+    dtheta_ddot = theta_ddot
+
+    # stack back into (..., 2)
+    dxdt = torch.stack([dtheta, dtheta_ddot], dim=-1)
+    return dxdt
+
+
 def pendulum_dynamics_np(state: np.ndarray, action: float, g: float = 9.81, m: float = 0.15, l: float = 0.5) -> np.ndarray:
     """
     Returns the time derivative dx/dt of the pendulum state x = [theta, theta_dot].
