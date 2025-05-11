@@ -4,11 +4,10 @@ import numpy as np
 from agents.abstract_agent import AbstractAgent
 from models.lyapunov_actor import LyapunovActor
 from models.lyapunov_critic import LyapunovCritic
-from trainers.lyapunov_ac_trainer import LyapunovACTrainer
-from util.sampling import sample_two_headed_gaussian_model
+from trainers.lyapunov_trainer import LyapunovTrainer
 
 
-class LyapunovACAgent(AbstractAgent):
+class LyapunovAgent(AbstractAgent):
     def __init__(self, config: dict):
         super().__init__(config)
         
@@ -23,19 +22,21 @@ class LyapunovACAgent(AbstractAgent):
         self.integ_threshold = config.get("integ_threshold")
         self.r1_bounds = config.get("r1_bounds")
         
-        state_dim = self.state_space
-        action_dim = self.action_space
+        state_dim = self.state_space.shape[0]
+        action_dim = self.action_space.shape[0]
 
-        actor_hidden_sizes = config.get("actor_hidden_sizes", (5, 5))
-        critic_hidden_sizes = config.get("critic_hidden_sizes", (20, 20))
+        actor_hidden_sizes = config.get("actor_hidden_sizes")
+        critic_hidden_sizes = config.get("critic_hidden_sizes")
 
-        self.max_action = 1.0
+        self.max_action = config.get("max_action")
         
         self.actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
         self.critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
 
+        # Only if we are doing dual-policy LAS-GLOBAL
+        self.dual_controller = config.get("dual_controller", False)
 
-        self._trainer = LyapunovACTrainer(
+        self._trainer = LyapunovTrainer(
             actor=self.actor_model,
             critic=self.critic_model,
             actor_lr=self.actor_lr,
@@ -47,16 +48,18 @@ class LyapunovACAgent(AbstractAgent):
             integ_threshold=self.integ_threshold,
             dt=self.dt,
             dynamics_fn=self.dynamics_fn,
-            state_space=state_dim,
+            state_dim=state_dim,
             r1_bounds=self.r1_bounds,
-            device=self.device
+            device=self.device,
+            lqr_controller=self.dual_controller,
         )
 
     def add_transition(self, transition: tuple) -> None:
         pass
 
     def update(self):
-        return self._trainer.train()
+        loss = self._trainer.train()
+        return loss
 
     def policy(self, state):
         s_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)

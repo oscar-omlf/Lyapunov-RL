@@ -1,17 +1,19 @@
+import os
+from typing import Callable
 import numpy as np
 import torch
-from typing import Callable
 from torch import nn
 from torch.optim.lr_scheduler import StepLR
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
+from agents.abstract_agent import AbstractAgent
+from trainers.abstract_trainer import Trainer
 from util.sampling import sample_in_region_gpu, sample_out_of_region_gpu
 from util.rk4_step import rk4_step
-from trainers.abstract_trainer import Trainer
 
 
-class LyapunovACTrainer(Trainer):
+class LyapunovTrainer(Trainer):
     def __init__(
         self, 
         actor: nn.Module, 
@@ -25,9 +27,10 @@ class LyapunovACTrainer(Trainer):
         integ_threshold: int,
         dt: float,
         dynamics_fn: Callable,
-        state_space: int,
+        state_dim: int,
         r1_bounds: list,
-        device: str
+        device: str,
+        dual_controller: dict | bool
     ):
         super().__init__()
         self.actor_model = actor
@@ -42,7 +45,7 @@ class LyapunovACTrainer(Trainer):
 
         self.dynamics_fn = dynamics_fn
 
-        self.state_space = state_space
+        self.state_dim = state_dim
         self.lb, self.ub = r1_bounds
 
         self.device = device
@@ -61,18 +64,41 @@ class LyapunovACTrainer(Trainer):
 
         self.timesteps = 0
 
+        self.dual_controller = dual_controller
+
+        # If we are doing dual-policy LAS-GLOBAL
+        if self.dual_controller:
+            self.lqr_agent = dual_controller["LQR"]
+            self.blending_function = dual_controller["BLENDING_FUNCTION"]
+
         print('Lyapunov Trainer Initialized!')
+
+    def lyapunov_value(self, state):
+        Wx = self.critic_model(state)
+
+        if isinstance(self.dual_controller, dict):
+            W_loc = self.lqr_agent.policy(state)
+            h2 = self.blending_function.get_h2(state)
+            lyapunov_value = h2 * (Wx - W_loc)
+        else:
+            lyapunov_value = Wx
+
+        return lyapunov_value
+
 
     def train(self):
         # Use GPU-based sampling and vectorized trajectory simulation
         init_states = sample_in_region_gpu(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
-        traj, values, conv_flags = self.simulate_trajectories(init_states, max_steps=3000)
+        traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
         # Here, 'values' is assumed to be the integrated norm computed during simulation.
         values = values.to(dtype=torch.float32, device=self.device)
 
         # 1) Enforce W(0) = 0
-        zeros_tensor = torch.zeros((1, self.state_space), dtype=torch.float32, device=self.device)
+        zeros_tensor = torch.zeros((1, self.state_dim), dtype=torch.float32, device=self.device)
         Lz = 5 * torch.square(self.critic_model(zeros_tensor))
+
+        print(f'W(0) {self.critic_model(zeros_tensor)}')
+        print(f'Lz loss: {Lz}')
 
         # 2) Enforce W(x) = tanh(alpha * V(x))
         Wx = self.critic_model(init_states)
@@ -131,9 +157,9 @@ class LyapunovACTrainer(Trainer):
     def simulate_trajectories(self, x: torch.Tensor, max_steps: int = 3000):
         """
         Vectorized simulation for a batch of trajectories.
-        :param x: Initial state tensor of shape [B, state_space].
+        :param x: Initial state tensor of shape [B, state_dim].
         :param max_steps: Maximum simulation steps.
-        :return: traj: tensor of shape [B, T, state_space] containing the full trajectory history,
+        :return: traj: tensor of shape [B, T, state_dim] containing the full trajectory history,
                 integ_acc: integrated norm per trajectory,
                 converged: convergence flags.
         """
@@ -171,7 +197,7 @@ class LyapunovACTrainer(Trainer):
                 x = torch.where(active.unsqueeze(1), x_next, x)
                 x_hist.append(x.clone())
 
-        # Stack the history along a new time dimension: shape [B, T, state_space]
+        # Stack the history along a new time dimension: shape [B, T, state_dim]
         traj = torch.stack(x_hist, dim=1)
         final_norm = torch.linalg.vector_norm(x, ord=2, dim=1)
         converged = final_norm < self.norm_threshold
@@ -206,7 +232,7 @@ class LyapunovACTrainer(Trainer):
 
         # Vectorized simulation: simulate 5 trajectories in parallel
         init_states = sample_in_region_gpu(5, self.lb_tensor, self.ub_tensor, self.device)
-        trajs, _, conv_flags = self.simulate_trajectories(init_states, max_steps=3000)
+        trajs, _, _ = self.simulate_trajectories(init_states, max_steps=3000)
         trajs_np = trajs.cpu().numpy()
         
         # Plot each trajectory
@@ -214,6 +240,8 @@ class LyapunovACTrainer(Trainer):
             plt.plot(trajs_np[i, :, 0], trajs_np[i, :, 1], 'o-', markersize=1, linewidth=0.5, color='r')
             plt.plot(trajs_np[i, 0, 0], trajs_np[i, 0, 1], 'r+')
         
+        os.makedirs("plots", exist_ok=True)
+
         plt.gca().set_aspect('equal')
         plt.savefig(f"./plots/lyAC_{self.timesteps}.png")
         plt.close()

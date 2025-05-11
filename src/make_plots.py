@@ -7,7 +7,7 @@ import torch
 from torch import nn
 
 from util.dynamics import original_pendulum_dynamics
-from agents.lyapunov_agent import LyapunovACAgent
+from agents.lyapunov_agent import LyapunovAgent
 from agents.lqr_agent import LQRAgent
 
 
@@ -117,7 +117,7 @@ config_lac = {
 }
 
 print("Loading Lyapunov-AC Agent...")
-lac_agent = LyapunovACAgent(config=config_lac)
+lac_agent = LyapunovAgent(config=config_lac)
 lac_agent.load()
 
 config_lqr = {

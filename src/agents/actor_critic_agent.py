@@ -99,29 +99,3 @@ class ActorCriticAgent(AbstractAgent):
         """
         self.actor_model.load_state_dict(torch.load(file_path + "ac_actor_model.pth", weights_only=True))
         self.critic_model.load_state_dict(torch.load(file_path + "ac_critic_model.pth"))
-
-
-    def compute_lyapunov(self, points: np.ndarray) -> np.ndarray:
-        """
-        Evaluate the critic network on a batch of state vectors.
-        If the input points are of shape (N, 2) representing [theta_error, theta_dot],
-        they are converted into full observations [cos(theta), sin(theta), theta_dot],
-        which the critic expects.
-        
-        :param points: A numpy array of shape (N, 2) or (N, 3).
-        :return: A 1D numpy array of critic outputs.
-        """
-        if points.shape[1] == 2:
-            theta = points[:, 0]
-            theta_dot = points[:, 1]
-            cos_theta = np.cos(theta).reshape(-1, 1)
-            sin_theta = np.sin(theta).reshape(-1, 1)
-            full_obs = np.hstack([cos_theta, sin_theta, theta_dot.reshape(-1, 1)])
-        else:
-            full_obs = points
-
-        points_tensor = torch.tensor(full_obs, dtype=torch.float32, device=self.device)
-        with torch.no_grad():
-            lyapunov_values = self.critic_model(points_tensor)
-        return lyapunov_values.cpu().numpy().flatten()
-

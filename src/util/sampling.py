@@ -62,11 +62,11 @@ def sample_out_of_region_gpu(num_samples: int, lb: torch.Tensor, ub: torch.Tenso
     return x
 
 
-def sample_from_ellipsoid(self, c, Nv, x_star, L_cholesky):
+def sample_from_ellipsoid(c, Nv, x_star, L_cholesky, state_dim):
     if c <= 0:
         return np.array([x_star])
     
-    Z = np.random.randn(self.Nv, self.state_dim)
+    Z = np.random.randn(Nv, state_dim)
 
     # Transoform using Cholesky decomposition P = L L^T
     # We need inv(L^T) * Z, equivalent to solving L^T * Y = Z for Y

@@ -2,6 +2,7 @@ import os
 import math
 import numpy as np
 import pickle
+import torch
 
 from agents.abstract_agent import AbstractAgent
 
@@ -10,90 +11,79 @@ class LQRAgent(AbstractAgent):
     def __init__(self, config: dict):
         super().__init__(config)
         self.g = config['g']    # acceleration due to gravity in m/s^2
-        self.m = 1.0            # mass in kg
-        self.l = 1.0            # length in m
+        self.m = config['m']    # mass in kg
+        self.l = config['l']    # length in m
 
+        self.max_action = config.get("max_action", 1.0)
 
         state_dim = self.state_space.shape[0]
+        action_dim = self.action_space.shape[0]
+
         self.x_star = config.get("x_star", np.zeros(state_dim, dtype=np.float64))
 
 
         # For LQR design, we need a 2D state: [theta, theta_dot],
         # where theta = 0 is the upright position.
-        # The environment observation is [cos(theta), sin(theta), theta_dot].
-        # We then do theta = arctan2(sin(theta), cos(theta)).
         #
-        # Linearize the pendulum dynamics about theta = 0.
-        # The nonlinear dynamics are:
-        #   theta_dot = theta_dot,
-        #   theta_ddot = - (g/l)*sin(theta) + (1/(m*l^2))*u.
-        # For small theta, sin(theta) ≈ theta, so:
-        #   theta_ddot ≈ - (g/l)*theta + (1/(m*l^2))*u.
-        #
-        # Therefore, the system matrices are:
-        A = np.array([[0, 1],
-                      [(3 * self.g) / (2 * self.l), 0]])
-        B = np.array([[0],
-                      [3 / (self.m * self.l**2)]])
         
-        self.A = A
-        self.B = B
+        # Linearize original pendulum dynamics:
+        #   theta_dot = theta_dot
+        #   theta_ddot = (g/l)*sin(theta) - (3/(m*l^2))*u
+        # around theta = 0: sin(theta) ~ theta
+        A = np.array([
+            [0.0, 1.0],
+            [self.g / self.l, 0.0]
+        ], dtype=np.float64)
+        B = np.array([
+            [0.0],
+            [-3.0 / (self.m * self.l**2)]
+        ], dtype=np.float64)
         
-        # Cost matrices: Q = I (penalize state deviation equally) and R = 1 (penalize control effort)
+        # Cost matrices: Q = I (penalize state deviation equally) and R = I (penalize control effort)
         # I used the same value as Wang and Fazlyab (2024) to replicate their experiment
-        Q = config.get("Q", np.eye(2))
-        R = config.get("R", np.eye(1))
+        Q = config.get("Q", np.eye(state_dim, dtype=np.float64))
+        R = config.get("R", np.eye(action_dim, dtype=np.float64))
 
         # Solve the continuous-time Algebraic Riccati Equation
         # Equation: A^T P + P A - P B R^{-1} B^T P + Q = 0
         P = self.solve_continuous_are(A, B, Q, R)
-        self.P = P
-        
+
         # Compute the optimal gain
         # Gain is computed as: K = R^{-1} B^T P
-        self.K = np.linalg.inv(R) @ (B.T @ P)  # shape (1,2)
+        K = np.linalg.inv(R) @ (B.T @ P)  # shape (1, state_dim)
+
+        # Store the Numpy version of the matrices
+        self.A_np = A
+        self.B_np = B
+        self.P_np = P
+        self.K_np = K
+
+        # Store the torch version of the matrices
+        self.A = torch.from_numpy(A).to(dtype=torch.float32, device=self.device)
+        self.B = torch.from_numpy(B).to(dtype=torch.float32, device=self.device)
+        self.P = torch.from_numpy(P).to(dtype=torch.float32, device=self.device)
+        self.K = torch.from_numpy(K).to(dtype=torch.float32, device=self.device)
+
         # print("LQR P matrix:", P)
         # print("LQR gain K:", self.K)
+    
+    def policy(self, state) -> torch.Tensor:
+        """Compute control u = -K * x, where x = [theta, theta_dot]."""
+        x = state.float()
+        u = -self.K @ x
 
-    def add_transition(self, transition: tuple) -> None:
-        # LQR is computed offline; no transitions needed
-        pass
+        u = torch.clamp(u, -self.max_action, self.max_action)
+        return u
 
-    def update(self) -> None:
-        # LQR does not learn, no updates needed
-        return None
-
-    def policy(self, state) -> np.array:
-        cos_theta, sin_theta, theta_dot = state
-        theta = np.arctan2(sin_theta, cos_theta)
-
-        x = np.array([theta, theta_dot])
-        u = -float(self.K @ x)
-
-        u = np.clip(u, -2.0, 2.0)
-        return np.array([u], dtype=np.float32)
-
-    def save(self, file_path: str = './saved_models/') -> None:
-        os.makedirs(file_path, exist_ok=True)
-        with open(file_path + "lqr_agent.pkl", "wb") as f:
-            pickle.dump({
-                'K': self.K,
-                'A': self.A,
-                'B': self.B,
-                'P': self.P,
-                'g': self.g,
-                'l': self.l
-            }, f)
-
-    def load(self, file_path: str = './saved_models/') -> None:
-        with open(file_path + "lqr_agent.pkl", "rb") as f:
-            data = pickle.load(f)
-            self.K = data['K']
-            self.A = data['A']
-            self.B = data['B']
-            self.P = data['P']
-            self.g = data['g']
-            self.l = data['l']
+    def policy_np(self, state) -> np.array:
+        """
+        Compute control u = -K * x, where x = [theta, theta_dot].
+        """
+        x = np.array(state, dtype=np.float64).reshape(-1, 2)         # (B,2)
+        u = -x.dot(self.K_np.T)                                      # (B,1)
+        
+        u = np.clip(u, -self.max_action, self.max_action).astype(np.float32)
+        return u
 
     def solve_continuous_are(self, A, B, Q, R):
         """
@@ -142,15 +132,47 @@ class LQRAgent(AbstractAgent):
         
         return P
     
-    def lyapunov_value(self, state):
-        """Computes V(x) = (x - x*)^T P (x - x*) [cite: 137]."""
-        delta_x = state.flatten() - self.x_star
-        P = self.lqr_agent.P
-        v_x = delta_x @ P @ delta_x
-        # Check for NaN before returning
+    def lyapunov_value(self, state) -> torch.Tensor:
+        """Computes V(x) = (x - x*)^T P (x - x*) in torch."""
+        x = state.float()
+
+        x_star = torch.from_numpy(self.x_star.astype(np.float32)).to(device=self.device)
+        delta = x - x_star
+
+        V = (delta @ self.P) * delta
+        V = V.sum(dim=-1)
+
+        V = torch.where(torch.isnan(V),
+                        torch.full_like(V, float('inf')),
+                        V)
+        V = torch.clamp(V, min=0.0)
+
+        return V
+
+    def lyapunov_value_np(self, state):
+        """Computes V(x) = (x - x*)^T P (x - x*)."""
+        x = np.array(state, dtype=np.float64).flatten()
+        delta_x = x - self.x_star
+        v_x = float(delta_x @ self.P_np @ delta_x)
+
         if math.isnan(v_x):
-             print(f"Warning: NaN detected in Lyapunov calculation for state {state}. Returning infinity.")
-             return float('inf')
+            print(f"Warning: NaN detected in Lyapunov calculation for state {state}. Returning infinity.")
+            v_x = float('inf')
         if v_x < 0:
              print(f"Warning: Negative Lyapunov value detected for state {state}.")
-        return max(0, v_x)
+             v_x = 0.0
+        return v_x
+    
+    def save(self, file_path: str = './saved_models/') -> None:
+        pass
+
+    def load(self, file_path: str = './saved_models/') -> None:
+        pass
+
+    def add_transition(self, transition: tuple) -> None:
+        # LQR is computed offline; no transitions needed
+        pass
+
+    def update(self) -> None:
+        # LQR does not learn, no updates needed
+        return None

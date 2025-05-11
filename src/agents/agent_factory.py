@@ -3,7 +3,7 @@ import gymnasium as gym
 from agents.random_agent import RandomAgent
 from agents.actor_critic_agent import ActorCriticAgent
 from agents.lqr_agent import LQRAgent
-from agents.lyapunov_agent import LyapunovACAgent
+from agents.lyapunov_agent import LyapunovAgent
 from agents.td3_agent import TD3Agent
 
 
@@ -28,7 +28,7 @@ class AgentFactory:
             elif agent_str == "LQR":
                 return LQRAgent(config)
             elif agent_str == "LYAPUNOV-AC":
-                return LyapunovACAgent(config)
+                return LyapunovAgent(config)
             elif agent_str == 'TD3':
                  return TD3Agent(config)
             else:
