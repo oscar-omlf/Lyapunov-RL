@@ -16,12 +16,11 @@ class LAS_LyACAgent(AbstractAgent):
         lac_config = config["LAC"]
 
         self.lqr_agent = LQRAgent(lqr_config)
-        self.lac_agent = LyapunovAgent(lac_config)
 
         self.beta = config.get("beta", 0.9)
         self.s = np.arctanh(self.beta)
 
-        self.state_dim = self.lqr_agent.P.shape[0]
+        self.state_dim = self.state_space.shape[0]
 
         self.x_star = np.zeros(self.state_dim, dtype=np.float64)
         self.dynamics_func = config.get("dynamics_func")
@@ -38,6 +37,13 @@ class LAS_LyACAgent(AbstractAgent):
 
         self.blending_function = BlendingFunction(self.lqr_agent, beta_h=self.beta, c_star=self.c_star, device=self.device)
 
+        lac_config["dual_controller_components"] = {
+            "LQR": self.lqr_agent,
+            "BLENDING_FUNCTION": self.blending_function
+        }
+
+        self.lac_agent = LyapunovAgent(lac_config)
+
     def _estimate_LQR_domain_of_attraction(self, delta_c, Nv, delta_threshold, max_c=1000.0):
         c_estimated = 0.0
         c = delta_c
@@ -48,14 +54,14 @@ class LAS_LyACAgent(AbstractAgent):
 
         while c < max_c:
             n_fails = 0
-            sampled_states = sample_from_ellipsoid(c, Nv, self.x_star, self.L_cholesky, self.state_dim)
+            sampled_np = sample_from_ellipsoid(c, Nv, self.x_star, self.L_cholesky, self.state_dim)
+            sampled_t = torch.from_numpy(sampled_np).to(dtype=torch.float32, device=self.device)
 
             for i in range(Nv):
-                xi = sampled_states[i]
-                Vi = self.blending_function.get_lyapunov_value(xi)
+                xi = sampled_t[i]
+                Vi = self.lqr_agent.lyapunov_value(xi)
 
                 u = self.lqr_agent.policy(xi)
-                print(u)
 
                 try:
                     x_prime = self.dynamics_func(xi, u)
@@ -64,7 +70,7 @@ class LAS_LyACAgent(AbstractAgent):
                     n_fails + 1
                     continue
 
-                Vi_prime = self.blending_function.get_lyapunov_value(x_prime)
+                Vi_prime = self.lqr_agent.lyapunov_value(x_prime)
                 if Vi_prime - Vi > 1e-6:
                     n_fails += 1
                     continue
@@ -100,3 +106,8 @@ class LAS_LyACAgent(AbstractAgent):
         dual_action = action_lqr + blending_factor * (action_lac - action_lqr)
         return dual_action
     
+    def load(self, path: str) -> None:
+        pass
+
+    def save(self, path: str) -> None:
+        pass

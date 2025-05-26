@@ -34,9 +34,9 @@ class LyapunovAgent(AbstractAgent):
         self.critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
 
         # Only if we are doing dual-policy LAS-GLOBAL
-        self.dual_controller = config.get("dual_controller", False)
+        self.dual_controller_components = config.get("dual_controller_components", False)
 
-        self._trainer = LyapunovTrainer(
+        self.trainer = LyapunovTrainer(
             actor=self.actor_model,
             critic=self.critic_model,
             actor_lr=self.actor_lr,
@@ -51,14 +51,14 @@ class LyapunovAgent(AbstractAgent):
             state_dim=state_dim,
             r1_bounds=self.r1_bounds,
             device=self.device,
-            lqr_controller=self.dual_controller,
+            dual_controller_components=self.dual_controller_components
         )
 
     def add_transition(self, transition: tuple) -> None:
         pass
 
     def update(self):
-        loss = self._trainer.train()
+        loss = self.trainer.train()
         return loss
 
     def policy(self, state):

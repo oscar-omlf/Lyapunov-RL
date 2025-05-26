@@ -1,11 +1,14 @@
 import numpy as np
 import scipy.linalg
 import torch
+from typing import Tuple
+
+
 from models.mlpmultivariategaussian import TwoHeadedMLP
 from torch.distributions import Distribution
 
 
-def sample_two_headed_gaussian_model(model: TwoHeadedMLP, state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def sample_two_headed_gaussian_model(model: TwoHeadedMLP, state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Sample an action from a Gaussian policy modeled by the provided model and compute the log probability of the action.
 

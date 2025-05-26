@@ -52,7 +52,7 @@ class TD3Agent(AbstractAgent):
             action_dim=action_dim
         ).to(device=self.device)
 
-        self._trainer = TD3Trainer(
+        self.trainer = TD3Trainer(
             buffer=self._replay_buffer,
             actor=self.actor_model,
             critic=self.critic_model,
@@ -84,7 +84,7 @@ class TD3Agent(AbstractAgent):
         """
         Perform a gradient descent step on both actor and critic.
         """
-        return self._trainer.train()
+        return self.trainer.train()
 
     def policy(self, state) -> np.array:
         """
@@ -115,5 +115,5 @@ class TD3Agent(AbstractAgent):
         """
         self.actor_model.load_state_dict(torch.load(os.path.join(file_path, "td3_actor.pth")))
         self.critic_model.load_state_dict(torch.load(os.path.join(file_path, "td3_critic.pth")))
-        self._trainer.actor_target = copy.deepcopy(self.actor_model)
-        self._trainer.critic_target = copy.deepcopy(self.critic_model)
+        self.trainer.actor_target = copy.deepcopy(self.actor_model)
+        self.trainer.critic_target = copy.deepcopy(self.critic_model)

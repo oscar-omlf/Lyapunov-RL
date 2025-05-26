@@ -7,8 +7,7 @@ import logging
 from agents.abstract_agent import AbstractAgent
 from agents.agent_factory import AgentFactory
 from util.metrics_tracker import MetricsTracker
-from util.dynamics import pendulum_dynamics, original_pendulum_dynamics
-from util.compare_doa import compare_doa
+from util.dynamics import pendulum_dynamics_torch
 
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
@@ -294,7 +293,7 @@ def train_lac():
         "alpha": 0.2,
         "actor_lr": 2e-3,
         "critic_lr": 2e-3,
-        "dynamics_fn": original_pendulum_dynamics,
+        "dynamics_fn": pendulum_dynamics_torch,
         "batch_size": 64,
         "num_paths_sampled": 8,
         "dt": 0.003,
@@ -303,8 +302,33 @@ def train_lac():
         "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
         "actor_hidden_sizes": (5, 5),
         "critic_hidden_sizes": (20, 20),
-        "state_space": 2,
-        "action_space": 1
+        "state_space": np.zeros(2),
+        "action_space":np.zeros(1),
+        "max_action": 1.0
+    }
+
+    config_lqr = {
+        "agent_str": "LQR",
+        "g": 9.81,
+        "l": 0.5,
+        "m": 0.15,
+        "state_space": np.zeros(2),
+        "action_space": np.zeros(1),
+        "max_action": 1.0,
+        "x_star": np.array([0.0, 0.0])
+    }
+
+    config_las_lyac = {
+        "agent_str": "LAS-LAC",
+        "LQR": config_lqr,
+        "LAC": config_lac,
+        "beta": 0.9,
+        "dynamics_func": pendulum_dynamics_torch,
+        "doa_samples_nv": 5000,
+        "doa_step_delta_c": 0.1,
+        "doa_violation_threshold": 0.05,
+        "state_space": np.zeros(2),
+        "action_space": np.zeros(1),
     }
     
     num_episodes = 3000

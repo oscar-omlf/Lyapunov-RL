@@ -34,10 +34,11 @@ class LQRAgent(AbstractAgent):
             [0.0, 1.0],
             [self.g / self.l, 0.0]
         ], dtype=np.float64)
+
         B = np.array([
             [0.0],
-            [-3.0 / (self.m * self.l**2)]
-        ], dtype=np.float64)
+            [1.0 / (self.m * self.l**2)]
+        ], dtype=np.float64) 
         
         # Cost matrices: Q = I (penalize state deviation equally) and R = I (penalize control effort)
         # I used the same value as Wang and Fazlyab (2024) to replicate their experiment

@@ -25,33 +25,22 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-    def get_param_pair(self):
-        """Extracts weights and biases for each Linear layer in order."""
-        ws = []
-        bs = []
-        for module in self.net:
-            if isinstance(module, nn.Linear):
-                ws.append(module.weight.detach().cpu().numpy())
-                bs.append(module.bias.detach().cpu().numpy())
-        return ws, bs
-
-    def forward_dreal(self, x):
+    def forward_dreal(self, x_vars: np.ndarray):
         """
-        Construct a dReal symbolic expression for the MLP.
-        `x` is expected to be a numpy array of dReal Variables.
+        x_vars : np.ndarray of d.Variable/d.Expression, shape (input_dim,)
+        returns: np.ndarray of d.Expression, shape (output_dim,)
         """
-        out = x
-        for module in self.net:
-            if isinstance(module, nn.Linear):
-                W = module.weight.detach().cpu().numpy()
-                b = module.bias.detach().cpu().numpy()
-                # Compute the affine transformation: W*out + b.
-                # Here we assume `out` is a numpy array of dReal variables.
-                out = np.dot(W, out) + b
-            elif isinstance(module, nn.Tanh):
-                out = dreal_elementwise(out, d.tanh)
-            elif isinstance(module, nn.Sigmoid):
-                out = dreal_elementwise(out, dreal_sigmoid)
+        import dreal as d
+        x = x_vars
+        for layer in self.net:
+            if isinstance(layer, nn.Linear):
+                W = layer.weight.detach().cpu().numpy()
+                b = layer.bias.detach().cpu().numpy()
+                x = W @ x + b
+            elif isinstance(layer, nn.Tanh):
+                x = dreal_elementwise(x, d.tanh)
+            elif isinstance(layer, nn.Sigmoid):
+                x = dreal_elementwise(x, dreal_sigmoid)
             else:
-                raise NotImplementedError("Activation not supported in dReal forward pass")
-        return out
+                raise NotImplementedError(f"{layer} not supported in dReal mode")
+        return x

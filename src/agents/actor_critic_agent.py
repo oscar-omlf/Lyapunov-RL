@@ -35,7 +35,7 @@ class ActorCriticAgent(AbstractAgent):
         self.critic_model = ACCritic(input_size=state_dim,
                                       hidden_sizes=critic_hidden_sizes).to(device=self.device)
 
-        self._trainer = ACTrainer(
+        self.trainer = ACTrainer(
             buffer=self._replay_buffer,
             actor=self.actor_model,
             critic=self.critic_model,
@@ -66,7 +66,7 @@ class ActorCriticAgent(AbstractAgent):
         """
         Perform a gradient descent step on both actor (policy) and critic (value function).
         """
-        return self._trainer.train()
+        return self.trainer.train()
 
     def policy(self, state) -> np.array:
         """

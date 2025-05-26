@@ -1,11 +1,13 @@
 import numpy as np
 import torch
+from typing import Tuple
+
 from agents.lqr_agent import LQRAgent
 
 
 class BlendingFunction:
     def __init__(self, lqr_agent: LQRAgent, beta_h: float = 0.9, c_star: float = 1.0, device: str = 'cpu'):
-        self.P_lqr = torch.from_numpy(lqr_agent.P).to(dtype=torch.float32, device=device)
+        self.P_lqr = lqr_agent.P
         self.setpoint_x = torch.zeros(1, self.P_lqr.shape[0], device=device)
         self.c_star = c_star
         self.device = device
@@ -52,7 +54,7 @@ class BlendingFunction:
         h2_val = torch.tanh(self.s_factor * v_x**(3./2.))
         return h2_val
 
-    def get_all_blending_terms(self, state_torch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_all_blending_terms(self, state_torch: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Calculates and returns v(x), h1(x), h2(x) efficiently """
         v_x = self.get_normalized_lyapunov_value(state_torch)
         h1_val = torch.tanh(self.s_factor * v_x)

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Distribution
+from typing import Tuple
+
 
 from models.twoheadedmlp import TwoHeadedMLP
 
@@ -22,7 +24,7 @@ class MLPMultivariateGaussian(TwoHeadedMLP):
 
         # self.double()
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         features = self.layers(x)
         mean = self.mean_head(features)
         log_diag_chol = self.log_diag_chol_head(features)

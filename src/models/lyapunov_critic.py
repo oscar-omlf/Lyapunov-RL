@@ -1,7 +1,9 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
 from models.mlp import MLP
+
 
 class LyapunovCritic(nn.Module):
     def __init__(self, input_size, hidden_sizes=(20, 20), inner_activation=nn.Tanh()):
@@ -16,13 +18,6 @@ class LyapunovCritic(nn.Module):
 
     def forward(self, x):
         return self.model(x).squeeze(-1)
-
-    def forward_with_grad(self, x):
-        y = self(x)
-        jacob = torch.autograd.functional.jacobian(self, (x,), create_graph=True)[0]
-        grad = torch.diagonal(jacob, dim1=0, dim2=1).T
-        return y, grad
     
-    def forward_dreal(self, x):
-        """Construct dReal symbolic expression for the critic."""
-        return self.model.forward_dreal(x)
+    def forward_dreal(self, x_vars):
+        return self.model.forward_dreal(x_vars)

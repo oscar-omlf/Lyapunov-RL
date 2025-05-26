@@ -6,11 +6,14 @@ from torch import nn
 from torch.optim.lr_scheduler import StepLR
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from typing import Union
 
 from agents.abstract_agent import AbstractAgent
 from trainers.abstract_trainer import Trainer
 from util.sampling import sample_in_region_torch, sample_out_of_region_torch
 from util.rk4_step import rk4_step
+
+import dreal as d
 
 
 class LyapunovTrainer(Trainer):
@@ -30,7 +33,7 @@ class LyapunovTrainer(Trainer):
         state_dim: int,
         r1_bounds: list,
         device: str,
-        dual_controller_components: dict | bool
+        dual_controller_components: Union[dict, bool]
     ):
         super().__init__()
         self.actor_model = actor
@@ -139,8 +142,8 @@ class LyapunovTrainer(Trainer):
         W_zeros, _ = self.lyapunov_value(zeros_tensor)
         Lz = 5 * torch.square(W_zeros)
 
-        print(f'W(0) {self.lyapunov_value(zeros_tensor)}')
-        print(f'Lz loss: {Lz}')
+        # print(f'W(0) {self.lyapunov_value(zeros_tensor)}')
+        # print(f'Lz loss: {Lz}')
 
         # 2) Enforce W(x) = tanh(alpha * V(x))
         Wx_Lr, _ = self.lyapunov_value(init_states)
@@ -168,7 +171,7 @@ class LyapunovTrainer(Trainer):
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
         init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
-        Wx_out = self.lyapunov_value(init_states_out)
+        Wx_out, _ = self.lyapunov_value(init_states_out)
         Lb = 2 * torch.mean(torch.abs(Wx_out - 1.0))
 
         actor_loss = Lc
@@ -203,72 +206,52 @@ class LyapunovTrainer(Trainer):
     def simulate_trajectories(self, x: torch.Tensor, max_steps: int = 3000):
         """
         Vectorized simulation for a batch of trajectories.
-        :param x: Initial state tensor of shape [B, state_dim].
+        :param x: Initial state tensor of shape [B, state_space].
         :param max_steps: Maximum simulation steps.
-        :return: traj: tensor of shape [B, T, state_dim] containing the full trajectory history,
+        :return: traj: tensor of shape [B, T, state_space] containing the full trajectory history,
                 integ_acc: integrated norm per trajectory,
                 converged: convergence flags.
         """
         B = x.shape[0]
         integ_acc = torch.zeros(B, device=self.device)
         active = torch.ones(B, dtype=torch.bool, device=self.device)
-
-        current_x = x.clone()
         x_hist = [x.clone()]
-
-        buffer_x = x.clone()
+        buffer = x.clone()
 
         for step in range(max_steps):
             if not active.any():
                 break
 
-            active_indices = torch.where(active)[0]
-            if len(active_indices) == 0:
-                print('Should not happen: no active trajectories')
-                break
+            norm = torch.linalg.vector_norm(x, ord=2, dim=1)
+            integ_acc[active] += norm[active] * self.dt
 
-            current_active_x = current_x[active]
-
-            # Compute the norm of active trajectories
-            norm_active = torch.linalg.vector_norm(current_active_x, ord=2, dim=1)
-            integ_acc[active] += norm_active * self.dt
-
-            # Check if the trajectories have converged
-            converged_active = norm_active < self.norm_threshold
-
+            converged = norm < self.norm_threshold
             if step >= 10:
-                stabilization_active = torch.linalg.vector_norm(current_active_x - buffer_x[active], ord=2, dim=1) < 1e-3
-
-            diverged_active = integ_acc[active] > self.integ_threshold
-            finished_active = converged_active | stabilization_active | diverged_active
-
-            active[active_indices[finished_active]] = False
+                stabilization = torch.linalg.vector_norm(x - buffer, ord=2, dim=1) < 1e-3
+            else:
+                stabilization = torch.zeros_like(norm, dtype=torch.bool)
+            diverged = integ_acc > self.integ_threshold
+            finished = converged | stabilization | diverged
+            active = active & (~finished)
 
             if step % 10 == 0:
-                buffer_x = current_x.clone()
+                buffer = x.clone()
 
             if active.any():
-                u_active = self._get_current_policy_actions(current_x[active])
-                
-                if u_active.dim() == 1 and u_active.shape[0] == current_x[active].shape[0]:
-                    u_active = u_active.unsqueeze(1)
+                u = self._get_current_policy_actions(x)
+                if u.dim() == 1:
+                    u = u.unsqueeze(1)
+                x_next = rk4_step(self.dynamics_fn, x, u, dt=self.dt)
+                # Only update the active trajectories
+                x = torch.where(active.unsqueeze(1), x_next, x)
+                x_hist.append(x.clone())
 
-                # Compute the next state of the active trajectories
-                x_next_active = rk4_step(self.dynamics_fn, current_x[active], u_active, dt=self.dt)
-
-                # Update the active trajectories
-                current_x[active] = x_next_active
-
-            x_hist.append(current_x.clone())
-
-        # Stack the history along a new time dimension: shape [B, T, state_dim]
+        # Stack the history along a new time dimension: shape [B, T, state_space]
         traj = torch.stack(x_hist, dim=1)
+        final_norm = torch.linalg.vector_norm(x, ord=2, dim=1)
+        converged = final_norm < self.norm_threshold
 
-        # Check if the trajectories have converged
-        final_norm = torch.linalg.vector_norm(current_x, ord=2, dim=1)
-        converged_end = final_norm < self.norm_threshold
-
-        return traj, integ_acc, converged_end
+        return traj, integ_acc, converged
 
     def plot_level_set_and_trajectories(self):
         # Create a grid covering R2 (boundary scaled by 2)
@@ -283,7 +266,8 @@ class LyapunovTrainer(Trainer):
         grid_tensor = torch.as_tensor(grid_points, dtype=torch.float32, device=self.device)
         
         with torch.no_grad():
-            Z = self.lyapunov_value(grid_tensor).cpu().numpy()
+            Z, _ = self.lyapunov_value(grid_tensor)
+            Z = Z.cpu().numpy()
         Z = Z.reshape(X.shape)
         
         plt.figure(figsize=(6,5))
@@ -311,3 +295,62 @@ class LyapunovTrainer(Trainer):
         plt.gca().set_aspect('equal')
         plt.savefig(f"./plots/lyAC_{self.timesteps}.png")
         plt.close()
+
+    # dReal-specific functions
+    def _sanity_network(self):
+        from util.dreal import dreal_var
+        x_np = np.random.randn(self.state_dim)
+        x_d  = dreal_var(self.state_dim)
+        y_pt = self.actor_model(torch.as_tensor(x_np, dtype=torch.float32,
+                                                device=self.device).unsqueeze(0))[0].item()
+        y_dr = self.actor_model.forward_dreal(x_d)[0]
+        fsat = d.And(*[x_d[i] == x_np[i] for i in range(self.state_dim)],
+                     y_dr >= y_pt - 1e-3,
+                     y_dr <= y_pt + 1e-3)
+        assert d.CheckSatisfiability(fsat, 1e-4).is_unsat()
+
+    def _sanity_dynamics(self):
+        from util.dreal import dreal_var
+        from util.dynamics import pendulum_dynamics_dreal
+        x_np = np.random.randn(self.state_dim)
+        u_np = np.random.randn(1)
+        x_d  = dreal_var(self.state_dim)
+        u_d  = dreal_var(1, "u")
+        f_pt = self.dynamics_fn(torch.as_tensor(x_np).unsqueeze(0),
+                                torch.as_tensor(u_np).unsqueeze(0))[0].cpu().numpy()
+        f_dr = pendulum_dynamics_dreal(x_d, u_d)
+        cons = [x_d[i] == x_np[i] for i in range(self.state_dim)] + \
+               [u_d[0] == u_np[0]] + \
+               [f_dr[i] >= f_pt[i]-1e-3 for i in range(self.state_dim)] + \
+               [f_dr[i] <= f_pt[i]+1e-3 for i in range(self.state_dim)]
+        assert d.CheckSatisfiability(d.And(*cons), 1e-4).is_unsat()
+
+    def check_lyapunov(self, level=0.9, scale=2.0, eps=0.5, delta=1e-4):
+        """
+        r1, r2 are dReal Results.  Both must be UNSAT for a certificate.
+        """
+        from util.dreal import dreal_var, in_box, on_boundary
+        from util.dynamics import pendulum_dynamics_dreal
+
+        x   = dreal_var(self.state_dim)
+        u   = self.actor_model.forward_dreal(x)
+        fx  = pendulum_dynamics_dreal(x, u)
+        Wx  = self.critic_model.forward_dreal(x)[0]
+        W0  = float(
+            self.lyapunov_value(torch.zeros((1, self.state_dim), device=self.device))[0]
+            )
+
+        lie = sum(fx[i] * Wx.Differentiate(x[i]) for i in range(self.state_dim))
+        xnorm = d.sqrt(sum(x[i]*x[i] for i in range(self.state_dim)))
+
+        bad_inside = d.And(
+            xnorm >= eps,
+            in_box(x, self.lb, self.ub, scale),
+            Wx <= level,
+            d.Or(lie >= 0, Wx <= W0)
+        )
+        leak = d.And(on_boundary(x, self.lb, self.ub, scale), Wx <= level)
+
+        r1 = d.CheckSatisfiability(bad_inside, delta)
+        r2 = d.CheckSatisfiability(leak, delta)
+        return r1, r2

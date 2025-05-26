@@ -1,3 +1,5 @@
+
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -20,3 +22,8 @@ class LyapunovActor(nn.Module):
     def forward(self, x):
         action = self.model(x)
         return self.max_action * action
+    
+    def forward_dreal(self, x_vars):
+        import dreal as d
+        out = self.model.forward_dreal(x_vars)[0]
+        return np.array([self.max_action * d.tanh(out)])

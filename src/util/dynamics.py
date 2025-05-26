@@ -40,34 +40,68 @@ def pendulum_dynamics_torch(
     Returns the time derivative dx/dt of the pendulum state x = [theta, theta_dot].
     Supports state of shape (..., 2) and scalar or broadcastable action.
     """
-    # state[..., 0] = theta, state[..., 1] = theta_dot
     theta = state[..., 0]
     theta_dot = state[..., 1]
 
-    # compute angular acceleration
-    theta_ddot = (g / l) * torch.sin(theta) - (3.0 / (m * l**2)) * action
+    action = action.squeeze(-1)
 
-    # pack the derivatives
+    # theta_ddot = (g / l) * torch.sin(theta) - (3.0 / (m * l**2)) * action 
+    # theta_ddot = (g / l) * torch.sin(theta) + (1.0 / (m * l**2)) * action
+    b = 0.01
+    theta_ddot = (g / l) * torch.sin(theta) - (b / (m * l * l)) * theta_dot + (1.0 / (m * l**2)) * action
+
     dtheta = theta_dot
     dtheta_ddot = theta_ddot
 
-    # stack back into (..., 2)
     dxdt = torch.stack([dtheta, dtheta_ddot], dim=-1)
     return dxdt
 
 
-def pendulum_dynamics_np(state: np.ndarray, action: float, g: float = 9.81, m: float = 0.15, l: float = 0.5) -> np.ndarray:
+def pendulum_dynamics_np(
+        state: np.ndarray, 
+        action: float, 
+        g: float = 9.81, 
+        m: float = 0.15, 
+        l: float = 0.5
+) -> np.ndarray:
     """
     Returns the time derivative dx/dt of the pendulum state x = [theta, theta_dot].
+    Works with batched state and action.
     """
-    theta, theta_dot = state
+    theta = state[:, 0]
+    theta_dot = state[:, 1]
 
+    # d(theta_dot)/dt = 3 * g / (2 * l) * sin(theta) + 3 / (m * l^2) * u
     theta_ddot = (g / l) * np.sin(theta) - (3.0 / (m * l**2)) * action
 
     dtheta = theta_dot
-    dtheta_ddot = theta_ddot
+    dtheta_dot = theta_ddot
+    
+    dxdt = np.stack([dtheta, dtheta_dot], axis=1)
+    return dxdt
 
-    dxdt = np.array([dtheta, dtheta_ddot], dtype=np.float64)
+
+def pendulum_dynamics_dreal(
+    state,
+    action,
+    g: float = 9.81,
+    m: float = 0.15,
+    l: float = 0.5
+):
+    import dreal as d
+    theta, omega = state
+    action = action[0]
+
+    theta_dot  = omega
+    # theta_ddot  = g / l * d.sin(theta) - (3.0 / (m * l**2)) * action
+    # theta_ddot = (g / l) * d.sin(theta) + (1.0 / (m * l**2)) * action
+    b = 0.01
+    theta_ddot = (g / l) * d.sin(theta) - (b / (m * l * l)) * omega + (1.0 / (m * l * l)) * action
+
+    dtheta = theta_dot
+    dtheta_dot = theta_ddot
+
+    dxdt = np.array([dtheta, dtheta_dot])
     return dxdt
 
 
