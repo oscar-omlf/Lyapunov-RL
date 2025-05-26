@@ -88,7 +88,6 @@ ub    = np.array([ 2.,  4.])
 
 def lqr_check(level, scale=2., eps=0.5, delta=1e-4):
     x = dreal_var(2)
-    # V(x) = xᵀ P x
     V = sum(x[i]*sum(P[i,j]*x[j] for j in range(2)) for i in range(2))
     W = d.tanh(alpha * V)
     u = - (agent_lqr.K_np @ np.array(x))[0]
