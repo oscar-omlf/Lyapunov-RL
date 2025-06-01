@@ -1,6 +1,6 @@
 import numpy as np
 import torch.nn as nn
-# import dreal as d
+import dreal as d
 
 from util.dreal import dreal_var, dreal_elementwise, dreal_sigmoid
 
@@ -30,7 +30,6 @@ class MLP(nn.Module):
         x_vars : np.ndarray of d.Variable/d.Expression, shape (input_dim,)
         returns: np.ndarray of d.Expression, shape (output_dim,)
         """
-        import dreal as d
         x = x_vars
         for layer in self.net:
             if isinstance(layer, nn.Linear):
