@@ -46,9 +46,9 @@ def pendulum_dynamics_torch(
     action = action.squeeze(-1)
 
     # theta_ddot = (g / l) * torch.sin(theta) - (3.0 / (m * l**2)) * action 
-    # theta_ddot = (g / l) * torch.sin(theta) + (1.0 / (m * l**2)) * action
-    b = 0.01
-    theta_ddot = (g / l) * torch.sin(theta) - (b / (m * l * l)) * theta_dot + (1.0 / (m * l**2)) * action
+    theta_ddot = (g / l) * torch.sin(theta) + (1.0 / (m * l**2)) * action
+    # b = 0.01
+    # theta_ddot = (g / l) * torch.sin(theta) - (b / (m * l * l)) * theta_dot + (1.0 / (m * l**2)) * action
 
     dtheta = theta_dot
     dtheta_ddot = theta_ddot
@@ -94,9 +94,9 @@ def pendulum_dynamics_dreal(
 
     theta_dot  = omega
     # theta_ddot  = g / l * d.sin(theta) - (3.0 / (m * l**2)) * action
-    # theta_ddot = (g / l) * d.sin(theta) + (1.0 / (m * l**2)) * action
-    b = 0.01
-    theta_ddot = (g / l) * d.sin(theta) - (b / (m * l * l)) * omega + (1.0 / (m * l * l)) * action
+    theta_ddot = (g / l) * d.sin(theta) + (1.0 / (m * l**2)) * action
+    # b = 0.01
+    # theta_ddot = (g / l) * d.sin(theta) - (b / (m * l * l)) * omega + (1.0 / (m * l * l)) * action
 
     dtheta = theta_dot
     dtheta_dot = theta_ddot
@@ -113,3 +113,83 @@ def compute_pendulum_reward(state: np.ndarray, action: float) -> float:
     theta, theta_dot = state
     cost = theta**2 + 0.1 * theta_dot**2 + 0.001 * (action**2)
     return -cost
+
+
+
+def double_integrator_dynamics_torch(state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    if state.ndim == 1:
+        x1_dot = state[1]
+        x2_dot = action[0]
+        return torch.stack([x1_dot, x2_dot])
+    elif state.ndim == 2:
+        x1_dot = state[:, 1]
+        x2_dot = action[:, 0]
+        return torch.stack([x1_dot, x2_dot], dim=1)
+
+def double_integrator_dynamics_np(state: np.ndarray, action: np.ndarray) -> np.ndarray:
+    
+    if state.ndim == 1:
+        x1_dot = state[1]
+        x2_dot = action[0]
+        return np.array([x1_dot, x2_dot])
+    elif state.ndim == 2:
+        x1_dot = state[:, 1]
+        x2_dot = action[:, 0]
+        return np.stack([x1_dot, x2_dot], axis=1)
+    
+
+def double_integrator_dynamics_dreal(state_vars, action_vars):
+    x1, x2 = state_vars[0], state_vars[1]
+    u = action_vars[0]
+
+    x1_dot = x2
+    x2_dot = u
+
+    return [x1_dot, x2_dot]
+
+
+def vanderpol_dynamics_torch(state: torch.Tensor, action: torch.Tensor, mu: float = 1.0) -> torch.Tensor:
+    if state.ndim == 1:  # Single sample
+        x1, x2 = state[0], state[1]
+        u = action[0]
+        
+        x1_dot = x2
+        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
+        return torch.stack([x1_dot, x2_dot])
+    elif state.ndim == 2:  # Batch of samples
+        x1 = state[:, 0]
+        x2 = state[:, 1]
+        u = action[:, 0] # Assuming action is (N,1) so u becomes (N,)
+        
+        x1_dot = x2
+        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
+        return torch.stack([x1_dot, x2_dot], dim=1)
+
+
+def vanderpol_dynamics_np(state: np.ndarray, action: np.ndarray, mu: float = 1.0) -> np.ndarray:
+    if state.ndim == 1: # Single sample
+        x1, x2 = state[0], state[1]
+        u = action[0]
+        
+        x1_dot = x2
+        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
+        return np.array([x1_dot, x2_dot])
+    elif state.ndim == 2: # Batch of samples
+        x1 = state[:, 0]
+        x2 = state[:, 1]
+        u = action[:, 0] # Assuming action is (N,1) so u becomes (N,)
+        
+        x1_dot = x2
+        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
+        return np.stack([x1_dot, x2_dot], axis=1)
+    
+
+def vanderpol_dynamics_dreal(state_vars, action_vars, mu=1.0):
+    x1, x2 = state_vars[0], state_vars[1]
+    u = action_vars[0]
+
+    # Dynamics
+    x1_dot = x2
+    x2_dot = x1 - mu * (1 - x1 * x1) * x2 + u
+
+    return [x1_dot, x2_dot]
