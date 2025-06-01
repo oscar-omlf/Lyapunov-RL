@@ -18,3 +18,7 @@ def on_boundary(x, lb, ub, scale=2.0, pad=0.01):
     outer = in_box(x, lb, ub, scale)
     inner = in_box(x, lb, ub, scale*(1-pad))
     return d.And(outer, d.Not(inner))
+
+def is_unsat(result) -> bool:
+    """True iff dReal returned UNSAT."""
+    return result is None or (isinstance(result, str) and result.lower() == "unsat")
