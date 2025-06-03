@@ -7,7 +7,12 @@ import logging
 from agents.abstract_agent import AbstractAgent
 from agents.agent_factory import AgentFactory
 from util.metrics_tracker import MetricsTracker
-from util.dynamics import pendulum_dynamics_torch
+from util.dynamics import (
+    pendulum_dynamics_torch,
+    pendulum_dynamics_dreal,
+    double_integrator_dynamics_torch,
+    vanderpol_dynamics_torch
+)
 
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
@@ -272,7 +277,7 @@ def train_default():
         "actor_hidden_sizes": (256, 256),
         "critic_hidden_sizes": (256, 256),
         "save_models": False,
-        "show_last_episode": True,
+        "show_last_episode": False,
     }
 
     num_runs = 1
@@ -280,7 +285,7 @@ def train_default():
 
     tracker = MetricsTracker()
 
-    train_agent(env_str, config_lqr, tracker, num_runs, num_episodes)
+    train_agent(env_str, config_td3, tracker, num_runs, num_episodes)
 
     tracker.save_top10_plots(folder="plots")
 
@@ -290,18 +295,19 @@ def train_default():
 def train_lac():
     config_lac = {
         "agent_str": "Lyapunov-AC",
-        "alpha": 0.2,
-        "actor_lr": 2e-3,
+        "alpha": 0.1,
+        "actor_lr": 3e-3,
         "critic_lr": 2e-3,
         "dynamics_fn": pendulum_dynamics_torch,
+        "dynamics_fn_dreal": pendulum_dynamics_dreal,
         "batch_size": 64,
         "num_paths_sampled": 8,
-        "dt": 0.003,
+        "dt": 0.01,
         "norm_threshold": 5e-2,
-        "integ_threshold": 150,
-        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
-        "actor_hidden_sizes": (5, 5),
-        "critic_hidden_sizes": (20, 20),
+        "integ_threshold": 50,
+        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
+        "actor_hidden_sizes": (30, 30),
+        "critic_hidden_sizes": (30, 30),
         "state_space": np.zeros(2),
         "action_space":np.zeros(1),
         "max_action": 1.0
@@ -318,24 +324,23 @@ def train_lac():
         "x_star": np.array([0.0, 0.0])
     }
 
-    config_las_lyac = {
+    config_las_lac = {
         "agent_str": "LAS-LAC",
         "LQR": config_lqr,
         "LAC": config_lac,
-        "beta": 0.9,
-        "dynamics_func": pendulum_dynamics_torch,
-        "doa_samples_nv": 5000,
-        "doa_step_delta_c": 0.1,
-        "doa_violation_threshold": 0.05,
+        "beta": 0.5,
+        "dynamics_fn": pendulum_dynamics_torch,
+        "dynamics_fn_dreal": pendulum_dynamics_dreal,
         "state_space": np.zeros(2),
         "action_space": np.zeros(1),
+        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0]))
     }
     
     num_episodes = 3000
 
     tracker = MetricsTracker()
     
-    agent = AgentFactory.create_agent(config=config_lac)
+    agent = AgentFactory.create_agent(config=config_las_lac)
 
     ep_actor_losses = []
     ep_critic_losses = []
@@ -358,4 +363,4 @@ def train_lac():
     tracker.save_top10_losses_plot(folder='plots')
 
 if __name__ == "__main__":
-    train_lac()
+    train_default()

@@ -5,7 +5,7 @@ from typing import Tuple
 from matplotlib import cm
 import torch
 
-from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_np
+from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_np, vanderpol_dynamics_torch
 from agents.lyapunov_agent import LyapunovAgent
 from agents.lqr_agent import LQRAgent
 # from agents.las_lyac_agent import LAS_LyACAgent
@@ -108,38 +108,40 @@ print(f"Using device: {device_name}")
 
 config_lac = {
         "agent_str": "Lyapunov-AC",
-        "alpha": 0.2,
-        "actor_lr": 2e-3,
-        "critic_lr": 2e-3,
-        "dynamics_fn": pendulum_dynamics_torch,
+        "alpha": 0.1,
+        "lr": 3e-3,
+        "dynamics_fn": vanderpol_dynamics_torch,
         "batch_size": 64,
         "num_paths_sampled": 8,
-        "dt": 0.003,
+        "dt": 0.01,
         "norm_threshold": 5e-2,
-        "integ_threshold": 150,
-        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
-        "actor_hidden_sizes": (5, 5),
-        "critic_hidden_sizes": (20, 20),
+        "integ_threshold": 50,
+        "r1_bounds": (np.array([-2.0, -2.0]), np.array([2.0, 2.0])),
+        "actor_hidden_sizes": (30, 30),
+        "critic_hidden_sizes": (30, 30),
         "state_space": np.zeros(2),
         "action_space":np.zeros(1),
         "max_action": MAX_ACTION
 }
 
 print("Initializing Lyapunov-AC Agent...")
-lac_agent = LyapunovAgent(config=config_lac)
+# lac_agent = LyapunovAgent(config=config_lac)
 
-lac_agent.load()
-print("Lyapunov-AC Agent loaded successfully.")
+# lac_agent.load()
+#print("Lyapunov-AC Agent loaded successfully.")
 
 config_lqr = {
     "agent_str": "LQR",
-    "g": G,
-    "l": L_POLE,
-    "m": M_BALL,
-    "max_action": MAX_ACTION,
+    "environment": "InvertedPendulum",
+    "discrete_discounted": True,
+    "gamma": 0.99,
+    "dt": 0.03,
+    "g": 9.81,
+    "m": 0.15,
+    "l": 0.5,
+    "max_action": 1.0,
     "state_space": np.zeros(2),
     "action_space": np.zeros(1),
-    "x_star": np.array([0.0, 0.0])
 }
 
 print("Initializing LQR Agent...")
@@ -154,6 +156,7 @@ states_flat_np = np.stack([X_grid_np.ravel(), Y_grid_np.ravel()], axis=-1)
 states_flat_torch = np_to_torch(states_flat_np, device_str=device_name)
 
 # Evaluate W(x) from LyAC Critic
+"""
 W_grid_np = np.full_like(X_grid_np, np.nan)
 try:
     with torch.no_grad():
@@ -162,10 +165,10 @@ try:
         W_grid_np = torch_to_np(W_flat_torch.squeeze()).reshape(X_grid_np.shape)
 except Exception as e:
     print(f"Error evaluating LyAC critic: {e}. W_grid_np will contain NaNs.")
-
+"""
 
 # Evaluate LQR Lyapunov Function V(x) = (x-x*)^T P (x-x*)
-x_star_lqr_np = lqr_agent.x_star # Should be np.array([0.0, 0.0])
+x_star_lqr_np = lqr_agent.x_star_np # Should be np.array([0.0, 0.0])
 delta_x_grid_theta = X_grid_np - x_star_lqr_np[0]
 delta_x_grid_thetadot = Y_grid_np - x_star_lqr_np[1]
 
@@ -178,15 +181,19 @@ V_lqr_grid_np = p11 * delta_x_grid_theta**2 + \
                 (p12 + p21) * delta_x_grid_theta * delta_x_grid_thetadot + \
                 p22 * delta_x_grid_thetadot**2
 
+"""
 # 3D Plot of W(x) 
 print("Generating 3D plot for LyAC W_learned(x)...")
-fig_3d_lac, ax_3d_lac = plot_lyapunov_3d(X_grid_np, Y_grid_np, W_grid_np,
-                                         title='LyAC Learned Zubov Function $W_{learned}(x)$',
-                                         z_label='$W_{learned}(x)$')
+fig_3d_lac, ax_3d_lac = plot_lyapunov_3d(
+    X_grid_np, Y_grid_np, W_grid_np,
+    title='LyAC Learned Zubov Function $W_{learned}(x)$',
+    z_label='$W_{learned}(x)$'
+)
 if ax_3d_lac.has_data():
     ax_3d_lac.view_init(elev=25, azim=-125)
 plt.savefig('./pendulum_W_lac_3d.png', dpi=300, bbox_inches='tight')
 # plt.show()
+"""
 
 # 3D Plot of LQR V(x)
 print("Generating 3D plot for LQR V(x)...")
@@ -203,6 +210,7 @@ plt.savefig('./pendulum_V_lqr_3d.png', dpi=300, bbox_inches='tight')
 print("Generating 2D RoA plot...")
 fig_2d, ax_2d = plt.subplots(figsize=(7.5, 6.5))
 
+"""
 # Liens for LyAC policy
 angle_flow_range = np.linspace(X_grid_np.min(), X_grid_np.max(), 30)
 velocity_flow_range = np.linspace(Y_grid_np.min(), Y_grid_np.max(), 30)
@@ -214,14 +222,20 @@ plot_streamlines(ax_2d, X_flow_np, Y_flow_np,
                  provided_dynamics_fn_torch=pendulum_dynamics_torch,
                  policy_expects_torch=True,
                  action_dim=1)
+"""
 
 # Contour for LQR V(x)
-lqr_contour_val = 0.4230  # TODO: Tune this!
+alpha = 0.2
+lqr_contour_val = 0.9992  # TODO: Tune this!
+lqr_contour_val = math.tanh(lqr_contour_val) / alpha
+print(f"LQR certified c* = {lqr_contour_val:.4f}")
 ax_2d.contour(X_grid_np, Y_grid_np, V_lqr_grid_np, levels=[lqr_contour_val], linewidths=2, colors='magenta', linestyles='--')
 
+"""
 # Contour for LyAC W(x)
-lyac_contour_val = 0.0195
+lyac_contour_val = 0.0241
 ax_2d.contour(X_grid_np, Y_grid_np, W_grid_np, levels=[lyac_contour_val],linewidths=2, colors='red')
+"""
 
 # Plot Styling
 ax_2d.set_title('Regions of Attraction - Inverted Pendulum')
@@ -233,7 +247,7 @@ ax_2d.grid(True, linestyle=':', alpha=0.6)
 
 legend_handles = [
     plt.Line2D([0], [0], color='magenta', linestyle='--', linewidth=2, label=f'LQR $V(x)={lqr_contour_val:.2f}$'),
-    plt.Line2D([0], [0], color='red', linewidth=2, label=f'LyAC $W(x)={lyac_contour_val:.2f}$')
+    # plt.Line2D([0], [0], color='red', linewidth=2, label=f'LyAC $W(x)={lyac_contour_val:.2f}$')
 ]
 ax_2d.legend(handles=legend_handles, loc='upper right') # Use handles for custom legend
 

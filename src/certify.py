@@ -4,7 +4,7 @@ import dreal as d
 
 from util.dreal import dreal_var, in_box, on_boundary
 from agents.agent_factory import AgentFactory 
-from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_dreal
+from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_dreal, double_integrator_dynamics_dreal, vanderpol_dynamics_torch, vanderpol_dynamics_dreal
 
 
 def is_unsat(result) -> bool:
@@ -24,6 +24,7 @@ def bisection(check_fun, c_max=0.95, tol=1e-3, it_max=40):
         if hi_fail < 1e-6:
             print("No certificate even at c = 0.")
             return 0.0
+        print(hi_fail)
 
     lo_pass = hi_fail
     hi_fail = hi_fail * 2.0
@@ -43,19 +44,20 @@ def bisection(check_fun, c_max=0.95, tol=1e-3, it_max=40):
 
 
 config_lac = {
-    "agent_str": "LYAPUNOV-AC",
-    "alpha": 0.2,
-    "actor_lr": 2e-3,
+    "agent_str": "Lyapunov-AC",
+    "alpha": 0.1,
+    "actor_lr": 3e-3,
     "critic_lr": 2e-3,
     "dynamics_fn": pendulum_dynamics_torch,
+    "dynamics_fn_dreal": pendulum_dynamics_dreal,
     "batch_size": 64,
     "num_paths_sampled": 8,
-    "dt": 0.003,
+    "dt": 0.01,
     "norm_threshold": 5e-2,
-    "integ_threshold": 150,
-    "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
-    "actor_hidden_sizes": (5, 5),
-    "critic_hidden_sizes": (20, 20),
+    "integ_threshold": 50,
+    "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
+    "actor_hidden_sizes": (30, 30),
+    "critic_hidden_sizes": (30, 30),
     "state_space": np.zeros(2),
     "action_space":np.zeros(1),
     "max_action": 1.0
@@ -63,23 +65,24 @@ config_lac = {
 
 config_lqr = {
     "agent_str": "LQR",
-    "g": 9.81,
-    "l": 0.5,
-    "m": 0.15,
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
-    "max_action": 1.0,
-    "x_star": np.array([0.0, 0.0])
+    'environment': 'InvertedPendulum',
+    'discrete':    False,
+    'g':           9.81,
+    'm':           0.15,
+    'l':           0.5,
+    'max_action':  1.0,
+    'state_space': np.zeros(2),
+    'action_space':np.zeros(1),
 }
 
 
-agent_lac = AgentFactory.create_agent(config=config_lac)
+# agent_lac = AgentFactory.create_agent(config=config_lac)
 agent_lqr = AgentFactory.create_agent(config=config_lqr)
 
-agent_lac.load()
+# agent_lac.load()
 
-c_star = bisection(agent_lac.trainer.check_lyapunov, LEVEL_INIT)
-print(f"\nLyAC certified c* = {c_star:.4f}")
+# c_star = bisection(agent_lac.trainer.check_lyapunov, LEVEL_INIT)
+# print(f"\nLyAC certified c* = {c_star:.4f}")
 
 alpha = 0.2
 P     = agent_lqr.P_np

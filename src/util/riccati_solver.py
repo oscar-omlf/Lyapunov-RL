@@ -199,7 +199,9 @@ class RiccatiSolver:
         H21 = gamma * B_T_P @ A
         H22 = R_gamma + gamma * B_T_P @ B
         
-        H = np.block([[H11, H12],
-                      [H21, H22]])
+        H = np.block([
+            [H11, H12],
+            [H21, H22]]
+        )
         return H
     

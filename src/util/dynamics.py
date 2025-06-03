@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import dreal as d
 
 
 def gym_pendulum_dynamics(xs, us):
@@ -36,10 +37,6 @@ def pendulum_dynamics_torch(
     m: float = 0.15,
     l: float = 0.5
 ) -> torch.Tensor:
-    """
-    Returns the time derivative dx/dt of the pendulum state x = [theta, theta_dot].
-    Supports state of shape (..., 2) and scalar or broadcastable action.
-    """
     theta = state[..., 0]
     theta_dot = state[..., 1]
 
@@ -59,24 +56,28 @@ def pendulum_dynamics_torch(
 
 def pendulum_dynamics_np(
         state: np.ndarray, 
-        action: float, 
+        action: np.ndarray, 
         g: float = 9.81, 
         m: float = 0.15, 
         l: float = 0.5
 ) -> np.ndarray:
-    """
-    Returns the time derivative dx/dt of the pendulum state x = [theta, theta_dot].
-    Works with batched state and action.
-    """
+    if state.ndim == 1: # Single sample
+        state = state.reshape(1, -1)
+    if action.ndim == 0: # Single scalar action
+        action = np.array([action]).reshape(1, -1)
+    elif action.ndim == 1 and action.shape[0] == state.shape[0]: # Batch of scalar actions
+        action = action.reshape(-1,1)
+
     theta = state[:, 0]
     theta_dot = state[:, 1]
+    u = action[:, 0]
 
-    # d(theta_dot)/dt = 3 * g / (2 * l) * sin(theta) + 3 / (m * l^2) * u
-    theta_ddot = (g / l) * np.sin(theta) - (3.0 / (m * l**2)) * action
+    # d(theta_dot)/dt = g / l * sin(theta) + 1 / (m * l^2) * u
+    theta_ddot = (g / l) * np.sin(theta) + (1.0 / (m * l**2)) * u
 
     dtheta = theta_dot
     dtheta_dot = theta_ddot
-    
+
     dxdt = np.stack([dtheta, dtheta_dot], axis=1)
     return dxdt
 
@@ -88,7 +89,6 @@ def pendulum_dynamics_dreal(
     m: float = 0.15,
     l: float = 0.5
 ):
-    import dreal as d
     theta, omega = state
     action = action[0]
 
@@ -168,20 +168,20 @@ def vanderpol_dynamics_torch(state: torch.Tensor, action: torch.Tensor, mu: floa
 
 def vanderpol_dynamics_np(state: np.ndarray, action: np.ndarray, mu: float = 1.0) -> np.ndarray:
     if state.ndim == 1: # Single sample
-        x1, x2 = state[0], state[1]
-        u = action[0]
-        
-        x1_dot = x2
-        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
-        return np.array([x1_dot, x2_dot])
-    elif state.ndim == 2: # Batch of samples
-        x1 = state[:, 0]
-        x2 = state[:, 1]
-        u = action[:, 0] # Assuming action is (N,1) so u becomes (N,)
-        
-        x1_dot = x2
-        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
-        return np.stack([x1_dot, x2_dot], axis=1)
+        state = state.reshape(1, -1)
+    if action.ndim == 0: # Single scalar action
+        action = np.array([action]).reshape(1, -1)
+    elif action.ndim == 1 and action.shape[0] == state.shape[0]: # Batch of scalar actions
+        action = action.reshape(-1,1)
+
+
+    x1 = state[:, 0]
+    x2 = state[:, 1]
+    u = action[:, 0]
+
+    x1_dot = x2
+    x2_dot = mu * (1 - x1**2) * x2 - x1 + u
+    return np.stack([x1_dot, x2_dot], axis=1)
     
 
 def vanderpol_dynamics_dreal(state_vars, action_vars, mu=1.0):
