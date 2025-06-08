@@ -5,7 +5,7 @@ from agents.actor_critic_agent import ActorCriticAgent
 from agents.lqr_agent import LQRAgent
 from agents.lyapunov_agent import LyapunovAgent
 from agents.td3_agent import TD3Agent
-from agents.las_lyac_agent import LAS_LyACAgent
+from agents.las_lac_agent import LAS_LACAgent
 
 
 class AgentFactory:
@@ -36,6 +36,6 @@ class AgentFactory:
             elif agent_str == 'TD3':
                  return TD3Agent(config)
             elif agent_str == 'LAS-LAC':
-                 return LAS_LyACAgent(config)
+                 return LAS_LACAgent(config)
             else:
                 raise ValueError(f"Unknown agent type: {agent_str}")

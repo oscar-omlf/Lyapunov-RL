@@ -178,6 +178,9 @@ logs
 
 pendulum
 
+plots
+saved_models
+
 *.out
 *.sh
 *.zip

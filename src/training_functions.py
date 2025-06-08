@@ -295,19 +295,18 @@ def train_default():
 def train_lac():
     config_lac = {
         "agent_str": "Lyapunov-AC",
-        "alpha": 0.1,
-        "actor_lr": 3e-3,
-        "critic_lr": 2e-3,
+        "alpha": 0.2,
+        "lr": 2e-3,
         "dynamics_fn": pendulum_dynamics_torch,
         "dynamics_fn_dreal": pendulum_dynamics_dreal,
         "batch_size": 64,
         "num_paths_sampled": 8,
-        "dt": 0.01,
+        "dt": 0.003,
         "norm_threshold": 5e-2,
-        "integ_threshold": 50,
+        "integ_threshold": 150,
         "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
-        "actor_hidden_sizes": (30, 30),
-        "critic_hidden_sizes": (30, 30),
+        "actor_hidden_sizes": (5, 5),
+        "critic_hidden_sizes": (20, 20),
         "state_space": np.zeros(2),
         "action_space":np.zeros(1),
         "max_action": 1.0
@@ -340,7 +339,7 @@ def train_lac():
 
     tracker = MetricsTracker()
     
-    agent = AgentFactory.create_agent(config=config_las_lac)
+    agent = AgentFactory.create_agent(config=config_lac)
 
     ep_actor_losses = []
     ep_critic_losses = []
@@ -356,11 +355,11 @@ def train_lac():
         logger.info(f"Episode {episode+1}/{num_episodes} | Actor Loss: {actor_loss:.4f} | Critic Loss: {critic_loss:.4f}")
 
         if (episode + 1) % 1000 == 0:
-            agent.save()
+            agent.save('./saved_models/lac/run_2') 
 
-    tracker.add_run_losses('lyAC', ep_actor_losses, ep_critic_losses)
+    tracker.add_run_losses('LAC', ep_actor_losses, ep_critic_losses)
 
-    tracker.save_top10_losses_plot(folder='plots')
+    tracker.save_top10_losses_plot(folder='plots/lac/run_2')
 
 if __name__ == "__main__":
-    train_default()
+    train_lac()

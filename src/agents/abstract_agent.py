@@ -27,6 +27,8 @@ class AbstractAgent(ABC):
 
         self.state_space = config.get("state_space")
         self.action_space = config.get("action_space")
+        self.state_dim = self.state_space.shape[0]
+        self.action_dim = self.action_space.shape[0]
         self.device = fetch_device()
         self._replay_buffer = ReplayBuffer()
 

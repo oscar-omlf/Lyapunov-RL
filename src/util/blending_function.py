@@ -10,6 +10,7 @@ class BlendingFunction:
         self.P_lqr = lqr_agent.P
         self.setpoint_x = torch.zeros(1, self.P_lqr.shape[0], device=device)
         self.c_star = c_star
+        self.c_star_torch = torch.tensor(c_star, dtype=torch.float32, device=device)
         self.device = device
 
         if not (0 < beta_h < 1):
@@ -21,9 +22,9 @@ class BlendingFunction:
     def _calculate_V_local(self, state_torch: torch.Tensor) -> torch.Tensor:
         """ Calculates V_local(x) = (x-x*)^T P (x-x*) """
         if state_torch.ndim == 1:
-            state_torch_batch = state_torch.unsqueeze(0)    # shape (1, state_dim)
+            state_torch_batch = state_torch.unsqueeze(0)
         else:
-            state_torch_batch = state_torch                # shape (batch, state_dim)
+            state_torch_batch = state_torch
         
         delta_x = state_torch_batch - self.setpoint_x
         term1 = torch.matmul(delta_x, self.P_lqr)
@@ -38,7 +39,10 @@ class BlendingFunction:
     def get_normalized_lyapunov_value(self, state_torch: torch.Tensor) -> torch.Tensor:
         """ Calculates and returns v(x) = V_local(x) / c_star """
         V_local_val = self._calculate_V_local(state_torch)
-        v_x_normalized = torch.clamp(V_local_val / self.c_star, min=0.0)
+
+        v_x_normalized = V_local_val / self.c_star_torch
+        v_x_normalized = torch.clamp(v_x_normalized, min=0.0)
+            
         return v_x_normalized
 
     def get_h1(self, state_torch: torch.Tensor) -> torch.Tensor:

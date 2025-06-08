@@ -12,9 +12,9 @@ class LyapunovAgent(AbstractAgent):
         super().__init__(config)
         
         self.alpha = config.get("alpha")
-        self.actor_lr = config.get("actor_lr")
-        self.critic_lr = config.get("critic_lr")
+        self.lr = config.get("lr")
         self.dynamics_fn = config.get("dynamics_fn")
+        self.dynamics_fn_dreal = config.get("dynamics_fn_dreal")
         self.batch_size = config.get("batch_size")
         self.num_paths_sampled = config.get("num_paths_sampled")
         self.dt = config.get("dt")
@@ -33,14 +33,12 @@ class LyapunovAgent(AbstractAgent):
         self.actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
         self.critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
 
-        # Only if we are doing dual-policy LAS-GLOBAL
-        self.dual_controller_components = config.get("dual_controller_components", False)
+        self.run_dir = config.get("run_dir")
 
         self.trainer = LyapunovTrainer(
             actor=self.actor_model,
             critic=self.critic_model,
-            actor_lr=self.actor_lr,
-            critic_lr=self.critic_lr,
+            lr=self.lr,
             alpha=self.alpha,
             batch_size=self.batch_size,
             num_paths_sampled=self.num_paths_sampled,
@@ -48,10 +46,11 @@ class LyapunovAgent(AbstractAgent):
             integ_threshold=self.integ_threshold,
             dt=self.dt,
             dynamics_fn=self.dynamics_fn,
+            dynamics_fn_dreal=self.dynamics_fn_dreal,
             state_dim=state_dim,
             r1_bounds=self.r1_bounds,
+            run_dir=self.run_dir,
             device=self.device,
-            dual_controller_components=self.dual_controller_components
         )
 
     def add_transition(self, transition: tuple) -> None:
@@ -66,10 +65,10 @@ class LyapunovAgent(AbstractAgent):
         action = self.actor_model(s_tensor)
         return action.cpu().numpy().flatten()
 
-    def save(self, file_path='./saved_models/'):
-        torch.save(self.actor_model.state_dict(), file_path + "lyapunov_actor_model.pth")
-        torch.save(self.critic_model.state_dict(), file_path + "lyapunov_critic_model.pth")
+    def save(self, file_path='./saved_models/', episode=None):
+        torch.save(self.actor_model.state_dict(), file_path + "actor_model_" + str(episode) + ".pth")
+        torch.save(self.critic_model.state_dict(), file_path + "critic_model_" + str(episode) + ".pth")
 
-    def load(self, file_path='./saved_models/'):
-        self.actor_model.load_state_dict(torch.load(file_path + "lyapunov_actor_model.pth"))
-        self.critic_model.load_state_dict(torch.load(file_path + "lyapunov_critic_model.pth"))
+    def load(self, file_path='./saved_models/', episode=None):
+        self.actor_model.load_state_dict(torch.load(file_path + 'actor_model_' + str(episode) + '.pth'))
+        self.critic_model.load_state_dict(torch.load(file_path + 'critic_model_' + str(episode) + '.pth'))

@@ -8,7 +8,7 @@ from util.metrics_tracker import MetricsTracker
 
 DT = 0.03
 NUM_STEPS = 150
-NUM_EPISODES = 1000
+NUM_EPISODES = 1
 THRESHOLD = 0.05
 
 def main():
@@ -58,8 +58,9 @@ def main():
     }
 
     agent_configs = [
-        config_discrete_pendulum,
-        config_continuous_pendulum,
+        config_discrete_pendulum]
+        
+    t = [config_continuous_pendulum,
         config_discrete_vanderpol,  
         config_continuous_vanderpol
     ]
@@ -105,6 +106,7 @@ def main():
 
 
                 state = next_state
+                print(state)
                 if np.any(np.abs(state) > 50.0):
                     break
             

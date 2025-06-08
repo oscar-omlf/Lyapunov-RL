@@ -13,8 +13,7 @@ class TD3Agent(AbstractAgent):
     def __init__(self, config: dict):
         super().__init__(config)
         
-        self.max_action = float(self.action_space.high[0])
-        
+        self.max_action = config.get("max_action")
         self.gamma = config.get("gamma")
         self.tau = config.get("tau")
         self.policy_freq = config.get("policy_freq")
@@ -30,26 +29,22 @@ class TD3Agent(AbstractAgent):
         self.actor_lr = config.get("actor_lr")
         self.critic_lr = config.get("critic_lr")
 
-        # Extract environment dimensions
-        state_dim = self.state_space.shape[0]
-        action_dim = self.action_space.shape[0]
-
         # Get architecture hyperparameters from config
         actor_hidden_sizes = config.get("actor_hidden_sizes", (64, 64))
         critic_hidden_sizes = config.get("critic_hidden_sizes", (64, 64))
         
         # Initialize the actor and critic models with the tunable architectures
         self.actor_model = TD3Actor(
-            input_size=state_dim,
+            input_size=self.state_dim,
             hidden_sizes=actor_hidden_sizes,
-            action_dim=action_dim,
+            action_dim=self.action_dim,
             max_action=self.max_action
         ).to(device=self.device)
         
         self.critic_model = TD3Critic(
-            state_dim=state_dim,
+            state_dim=self.state_dim,
             hidden_sizes=critic_hidden_sizes,
-            action_dim=action_dim
+            action_dim=self.action_dim
         ).to(device=self.device)
 
         self.trainer = TD3Trainer(

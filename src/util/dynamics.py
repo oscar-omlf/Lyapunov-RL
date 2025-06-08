@@ -43,9 +43,11 @@ def pendulum_dynamics_torch(
     action = action.squeeze(-1)
 
     # theta_ddot = (g / l) * torch.sin(theta) - (3.0 / (m * l**2)) * action 
-    theta_ddot = (g / l) * torch.sin(theta) + (1.0 / (m * l**2)) * action
-    # b = 0.01
-    # theta_ddot = (g / l) * torch.sin(theta) - (b / (m * l * l)) * theta_dot + (1.0 / (m * l**2)) * action
+    # theta_ddot = (g / l) * torch.sin(theta) + (1.0 / (m * l**2)) * action
+    
+    # with friction b = 0.1
+    b = 0.1
+    theta_ddot = (g / l) * torch.sin(theta) - (b / (m * l * l)) * theta_dot + (1.0 / (m * l**2)) * action
 
     dtheta = theta_dot
     dtheta_ddot = theta_ddot
@@ -73,7 +75,9 @@ def pendulum_dynamics_np(
     u = action[:, 0]
 
     # d(theta_dot)/dt = g / l * sin(theta) + 1 / (m * l^2) * u
-    theta_ddot = (g / l) * np.sin(theta) + (1.0 / (m * l**2)) * u
+    # theta_ddot = (g / l) * np.sin(theta) + (1.0 / (m * l**2)) * u
+    b = 0.1
+    theta_ddot = (g / l) * np.sin(theta) - (b / (m * l * l)) * theta_dot + (1.0 / (m * l**2)) * u
 
     dtheta = theta_dot
     dtheta_dot = theta_ddot
@@ -94,9 +98,9 @@ def pendulum_dynamics_dreal(
 
     theta_dot  = omega
     # theta_ddot  = g / l * d.sin(theta) - (3.0 / (m * l**2)) * action
-    theta_ddot = (g / l) * d.sin(theta) + (1.0 / (m * l**2)) * action
-    # b = 0.01
-    # theta_ddot = (g / l) * d.sin(theta) - (b / (m * l * l)) * omega + (1.0 / (m * l * l)) * action
+    # theta_ddot = (g / l) * d.sin(theta) + (1.0 / (m * l**2)) * action
+    b = 0.1
+    theta_ddot = (g / l) * d.sin(theta) - (b / (m * l * l)) * omega + (1.0 / (m * l * l)) * action
 
     dtheta = theta_dot
     dtheta_dot = theta_ddot

@@ -14,6 +14,7 @@ from util.sampling import sample_in_region_torch, sample_out_of_region_torch
 from util.rk4_step import rk4_step
 
 import dreal as d
+from util.dreal import dreal_var, in_box, on_boundary
 
 
 class LyapunovTrainer(Trainer):
@@ -21,8 +22,7 @@ class LyapunovTrainer(Trainer):
         self, 
         actor: nn.Module, 
         critic: nn.Module,
-        actor_lr: float, 
-        critic_lr: float,
+        lr: float, 
         alpha: float,
         batch_size: int,
         num_paths_sampled: int,
@@ -30,10 +30,11 @@ class LyapunovTrainer(Trainer):
         integ_threshold: int,
         dt: float,
         dynamics_fn: Callable,
+        dynamics_fn_dreal: Callable,
         state_dim: int,
         r1_bounds: list,
+        run_dir: str,
         device: str,
-        dual_controller_components: Union[dict, bool]
     ):
         super().__init__()
         self.actor_model = actor
@@ -47,159 +48,84 @@ class LyapunovTrainer(Trainer):
         self.dt = dt
 
         self.dynamics_fn = dynamics_fn
+        self.dynamics_fn_dreal = dynamics_fn_dreal
 
         self.state_dim = state_dim
         self.lb, self.ub = r1_bounds
+
+        self.run_dir = run_dir
 
         self.device = device
 
         self.lb_tensor = torch.tensor(self.lb, dtype=torch.float32, device=self.device)
         self.ub_tensor = torch.tensor(self.ub, dtype=torch.float32, device=self.device)
 
-        # self.actor_optimizer = torch.optim.Adam(actor.parameters(), lr=actor_lr)
-        # self.critic_optimizer = torch.optim.Adam(critic.parameters(), lr=critic_lr)
-
-        # self.actor_scheduler = StepLR(self.actor_optimizer, step_size=500, gamma=0.8)
-        # self.critic_scheduler = StepLR(self.critic_optimizer, step_size=500, gamma=0.8)
-
-        self.optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=actor_lr)
+        self.optimizer = torch.optim.Adam(list(actor.parameters()) + list(critic.parameters()), lr=lr)
         self.scheduler = StepLR(self.optimizer, step_size=500, gamma=0.8)
 
         self.timesteps = 0
-        self.dual_controller_components = dual_controller_components
 
-        # If we are doing dual-policy LAS-GLOBAL
-        if self.dual_controller_components:
-            self.lqr_agent = dual_controller_components["LQR"]
-            self.blending_function = dual_controller_components["BLENDING_FUNCTION"]
-            print('Lyapunov Trainer Initialized with Dual Controller (LQR + Blending)!')
-        else:
-            print('Lyapunov Trainer Initialized (Standalone LyAC)!')
-
-    def _get_current_policy_actions(self, state):
-        """
-        Helper to get actions from the current policy (either learnt or composite).
-        """
-        actions_learned = self.actor_model(state)
-
-        if isinstance(self.dual_controller_components, dict):
-            actions_loc = self.lqr_agent.policy(state)
-
-            h1_blend = self.blending_function.get_h1(state)
-
-            # TODO: Remove this check
-            if h1_blend.ndim == 1:
-                print('h1 is a scalar, not a tensor. This is probably a bug.')
-                h1_blend = h1_blend.unsqueeze(-1)
-
-            current_actions = actions_loc + h1_blend * (actions_learned - actions_loc)
-        else:
-            current_actions = actions_learned
-
-        return current_actions
-
-
-    def lyapunov_value(self, state: torch.Tensor, requires_grad: bool = False) -> torch.Tensor:
-        """
-        Computes the Lyapunov/ Zubov value W(x).
-        If dual_controller is active, computes W_composite(x).
-        Returns W(x) and optionally its gradient w.r.t. state.
-        """
-        if requires_grad and not state.requires_grad:
-            state.requires_grad_(True)
-
-        Wx_learned = self.critic_model(state)
-
-        if self.dual_controller_components:
-            V_loc = self.blending_function.get_lyapunov_value(state)
-            W_loc = torch.tanh(self.alpha_zubov * V_loc)
-
-            h2 = self.blending_function.get_h2(state)
-            Wx_final = W_loc + h2 * (Wx_learned - W_loc)
-        else:
-            Wx_final = Wx_learned
-
-        grad_Wx = None
-        if requires_grad:
-            if Wx_final.requires_grad:
-                grad_Wx = torch.autograd.grad(Wx_final.sum(), state, create_graph=True, retain_graph=True)[0] 
-            else:
-                print('Wx_final does not require grad. Setting grad_Wx to zero.')
-                grad_Wx = torch.zeros_like(Wx_final)
-
-        return Wx_final, grad_Wx
-
+        print('Lyapunov Trainer Initialized (Standalone LAC)!')
 
     def train(self):
         # Use GPU-based sampling and vectorized trajectory simulation
         init_states = sample_in_region_torch(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
         traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
-        # Here, 'values' is assumed to be the integrated norm computed during simulation.
         values = values.to(dtype=torch.float32, device=self.device)
 
         # 1) Enforce W(0) = 0
         zeros_tensor = torch.zeros((1, self.state_dim), dtype=torch.float32, device=self.device)
-        W_zeros, _ = self.lyapunov_value(zeros_tensor)
-        Lz = 5 * torch.square(W_zeros)
-
-        # print(f'W(0) {self.lyapunov_value(zeros_tensor)}')
-        # print(f'Lz loss: {Lz}')
+        W_zeros = self.critic_model(zeros_tensor)
+        Lz = 5.0 * torch.square(W_zeros) 
 
         # 2) Enforce W(x) = tanh(alpha * V(x))
-        Wx_Lr, _ = self.lyapunov_value(init_states)
+        Wx_Lr = self.critic_model(init_states)
         target = torch.tanh(self.alpha_zubov * values)
         Lr = F.mse_loss(Wx_Lr, target)
 
         # 3) Physics-Informed Loss (PDE residual)
         init_states_in = sample_in_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
-        Wx_in, grad_Wx_in = self.lyapunov_value(init_states_in, requires_grad=True)
+        Wx_in, grad_Wx_in = self.critic_model.forward_with_grad(init_states_in)
 
-        current_actions = self._get_current_policy_actions(init_states_in)
+        current_actions = self.actor_model(init_states_in)
         current_fxu = self.dynamics_fn(init_states_in, current_actions)
+        # actions_detached = self.actor_model(init_states_in).detach()
+        # fxu_detached = self.dynamics_fn(init_states_in, actions_detached)
 
-        phix = torch.linalg.vector_norm(init_states_in, ord=2, dim=1)
+        phix = torch.norm(init_states_in, p=2, dim=1) 
 
+        # changed current_fxu to fxu_detached
         resid = torch.sum(grad_Wx_in * current_fxu.detach(), dim=1) + \
-            self.alpha_zubov * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
+        self.alpha_zubov * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
-        # grad_norm = torch.linalg.vector_norm(grad_Wx, ord=2, dim=1, keepdim=True)
-        # unit_grad = grad_Wx / (grad_norm + 1e-8)
-        # Lc = torch.mean(torch.sum(unit_grad.detach() * fxu, dim=1))
-        Lc = torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
+        # grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
+        # unit_grad = grad_Wx_in / (grad_norm + 1e-8)
+        # Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
+        Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
+        # Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * fxu_for_actor, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
         init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
-        Wx_out, _ = self.lyapunov_value(init_states_out)
-        Lb = 2 * torch.mean(torch.abs(Wx_out - 1.0))
+        Wx_out = self.critic_model(init_states_out) 
+        # Lb = 5.0 * torch.mean(torch.abs(Wx_out - 1.0))
+        Lb = 5.0 * F.l1_loss(Wx_out, torch.ones_like(Wx_out).to(self.device))
 
         actor_loss = Lc
         critic_loss = Lz + Lr + Lp + Lb
 
-        if False:
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor_optimizer.step()
-
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
-
-            self.actor_scheduler.step()
-            self.critic_scheduler.step()
-
-        if True:
-            total_loss = 0.5 * (actor_loss + critic_loss)
-            self.optimizer.zero_grad()
-            total_loss.backward()
-            self.optimizer.step()
-            self.scheduler.step()
+        total_loss = 0.5 * actor_loss + critic_loss
+        self.optimizer.zero_grad()
+        total_loss.backward()
+        self.optimizer.step()
+        self.scheduler.step()
 
         self.timesteps += 1
         if self.timesteps % 20 == 0:
             self.plot_level_set_and_trajectories()
 
+        print(f"Lz: {Lz.item():.4f} | Lr: {Lr.item():.4f} | Lp: {Lp.item():.4f} | Lc: {Lc.item():.4f} | Lb: {Lb.item():.4f}")
         return actor_loss.item(), critic_loss.item()
 
     @torch.no_grad()
@@ -227,7 +153,7 @@ class LyapunovTrainer(Trainer):
 
             converged = norm < self.norm_threshold
             if step >= 10:
-                stabilization = torch.linalg.vector_norm(x - buffer, ord=2, dim=1) < 1e-3
+                stabilization = torch.linalg.vector_norm(x - buffer, ord=2, dim=1) < 1e-3 
             else:
                 stabilization = torch.zeros_like(norm, dtype=torch.bool)
             diverged = integ_acc > self.integ_threshold
@@ -238,7 +164,7 @@ class LyapunovTrainer(Trainer):
                 buffer = x.clone()
 
             if active.any():
-                u = self._get_current_policy_actions(x)
+                u = self.actor_model(x)
                 if u.dim() == 1:
                     u = u.unsqueeze(1)
                 x_next = rk4_step(self.dynamics_fn, x, u, dt=self.dt)
@@ -266,7 +192,7 @@ class LyapunovTrainer(Trainer):
         grid_tensor = torch.as_tensor(grid_points, dtype=torch.float32, device=self.device)
         
         with torch.no_grad():
-            Z, _ = self.lyapunov_value(grid_tensor)
+            Z = self.critic_model(grid_tensor)
             Z = Z.cpu().numpy()
         Z = Z.reshape(X.shape)
         
@@ -293,7 +219,10 @@ class LyapunovTrainer(Trainer):
         os.makedirs("plots", exist_ok=True)
 
         plt.gca().set_aspect('equal')
-        plt.savefig(f"./plots/lyAC_{self.timesteps}.png")
+        level_set_dir = os.path.join(self.run_dir, "level_sets")
+        os.makedirs(level_set_dir, exist_ok=True)
+        plot_path = os.path.join(level_set_dir, f"level_set_{self.timesteps}.png")
+        plt.savefig(plot_path)
         plt.close()
 
     # dReal-specific functions
@@ -311,46 +240,87 @@ class LyapunovTrainer(Trainer):
 
     def _sanity_dynamics(self):
         from util.dreal import dreal_var
-        from util.dynamics import pendulum_dynamics_dreal
         x_np = np.random.randn(self.state_dim)
         u_np = np.random.randn(1)
         x_d  = dreal_var(self.state_dim)
         u_d  = dreal_var(1, "u")
         f_pt = self.dynamics_fn(torch.as_tensor(x_np).unsqueeze(0),
                                 torch.as_tensor(u_np).unsqueeze(0))[0].cpu().numpy()
-        f_dr = pendulum_dynamics_dreal(x_d, u_d)
+        f_dr = self.dynamics_fn_dreal(x_d, u_d)
         cons = [x_d[i] == x_np[i] for i in range(self.state_dim)] + \
                [u_d[0] == u_np[0]] + \
                [f_dr[i] >= f_pt[i]-1e-3 for i in range(self.state_dim)] + \
                [f_dr[i] <= f_pt[i]+1e-3 for i in range(self.state_dim)]
         assert d.CheckSatisfiability(d.And(*cons), 1e-4).is_unsat()
 
-    def check_lyapunov(self, level=0.9, scale=2.0, eps=0.5, delta=1e-4):
+    def in_domain_dreal(self, x, scale=1.):
         """
-        r1, r2 are dReal Results.  Both must be UNSAT for a certificate.
+        :param x: np.array[dreal.Variable], [2,]
         """
-        from util.dreal import dreal_var, in_box, on_boundary
-        from util.dynamics import pendulum_dynamics_dreal
-
-        x   = dreal_var(self.state_dim)
-        u   = self.actor_model.forward_dreal(x)
-        fx  = pendulum_dynamics_dreal(x, u)
-        Wx  = self.critic_model.forward_dreal(x)[0]
-        W0  = float(
-            self.lyapunov_value(torch.zeros((1, self.state_dim), device=self.device))[0]
-            )
-
-        lie = sum(fx[i] * Wx.Differentiate(x[i]) for i in range(self.state_dim))
-        xnorm = d.sqrt(sum(x[i]*x[i] for i in range(self.state_dim)))
-
-        bad_inside = d.And(
-            xnorm >= eps,
-            in_box(x, self.lb, self.ub, scale),
-            Wx <= level,
-            d.Or(lie >= 0, Wx <= W0)
+        return d.And(
+            x[0] >= self.lb[0] * scale,
+            x[0] <= self.ub[0] * scale,
+            x[1] >= self.lb[1] * scale,
+            x[1] <= self.ub[1] * scale
         )
-        leak = d.And(on_boundary(x, self.lb, self.ub, scale), Wx <= level)
+    
+    def on_boundry_dreal(self, x, scale=2.):
+        condition1 = d.And(
+            x[0] >= self.lb[0] * scale * 0.99,
+            x[0] <= self.ub[0] * scale * 0.99,
+            x[1] >= self.lb[1] * scale * 0.99,
+            x[1] <= self.ub[1] * scale * 0.99
+        )
+        condition2 = d.Not(
+            d.And(
+                x[0] >= self.lb[0] * scale * 0.97,
+                x[0] <= self.ub[0] * scale * 0.97,
+                x[1] >= self.lb[1] * scale * 0.97,
+                x[1] <= self.ub[1] * scale * 0.97
+            )
+        )
+        return d.And( condition1, condition2 )
 
-        r1 = d.CheckSatisfiability(bad_inside, delta)
-        r2 = d.CheckSatisfiability(leak, delta)
+    def check_lyapunov(self, level=0.9, scale=2., eps=0.5):
+        print('Standalone LyAC Lyapunov Checker')
+        W0 = self.critic_model(torch.zeros((1, self.state_dim), device=self.device))
+        W0 = W0.squeeze().item()
+        x = dreal_var(self.state_dim)
+        x_norm = d.Expression(0.)
+        lie_derivative_W = d.Expression(0.)
+
+        # construct xnorm and f(x, u)^T \nabla_x W(x)
+        u = self.actor_model.forward_dreal(x)
+        fx = self.dynamics_fn_dreal(x, u)
+        Wx = self.critic_model.forward_dreal(x)[0]
+
+        # construct x_norm and <fx, \grad_x W(x)>
+        for i in range(self.state_dim):
+            x_norm += x[i] * x[i]
+            lie_derivative_W += fx[i] * Wx.Differentiate(x[i])
+        x_norm = d.sqrt(x_norm)
+
+        condition = d.And(
+            x_norm >= eps,
+            self.in_domain_dreal(x, scale),
+            Wx <= level,
+            d.Or(
+                lie_derivative_W >= 0,
+                Wx <= W0
+            )
+        )
+        r1 = d.CheckSatisfiability( condition, 0.01 )
+        
+        r2 = d.CheckSatisfiability(
+            d.And(
+                self.on_boundry_dreal(x, scale=scale),
+                Wx <= level
+            ),
+            0.01
+        )
+        print('---')
+        print('r1', r1)
+        print('---')
+        print('r2', r2)
+        print('---')
         return r1, r2

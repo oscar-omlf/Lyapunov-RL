@@ -14,13 +14,11 @@ class LQRAgent(AbstractAgent):
         self.riccati_solver = RiccatiSolver()
 
         self.environment = config.get("environment", "InvertedPendulum")
-        self.discrete = config.get("discrete", False)
+        self.discrete_discounted = config.get("discrete_discounted", False)
+        self.gamma = config.get("gamma", 0.99)
 
         self.max_action = config.get("max_action", 1.0)
         self.dt = config.get("dt", 0.03)
-
-        self.state_dim = self.state_space.shape[0]
-        self.action_dim = self.action_space.shape[0]
 
         # For LQR design, we need a 2D state: [theta, theta_dot],
         
@@ -56,22 +54,40 @@ class LQRAgent(AbstractAgent):
         else:
             raise ValueError(f"Unknown environment: {self.environment}")
         
-        if self.discrete:
-            A, B = self.discretize_dynamics(A_c, B_c, dt=self.dt)
-        else:
-            A, B = A_c, B_c
-        
         # Cost matrices: Q = I (penalize state deviation equally) and R = I (penalize control effort)
         # I used the same value as Wang and Fazlyab (2024) to replicate their experiment
         Q = config.get("Q", np.eye(self.state_dim, dtype=np.float64))
         R = config.get("R", np.eye(self.action_dim, dtype=np.float64))
 
-        if self.discrete:
-            P = self.riccati_solver.solve_discrete_are(A, B, Q, R)
-            K = np.linalg.inv(R + B.T @ P @ B) @ (B.T @ P @ A)
+        if self.discrete_discounted:
+            A_d, B_d = self.discretize_dynamics(A_c, B_c, dt=self.dt)
+
+            # Section 4.2 of the paper
+            P_bar = self.riccati_solver.solve_discrete_are(A_d, B_d, Q, R)
+
+            Q_gamma = self.gamma * Q + (1 - self.gamma) * P_bar
+            R_gamma = self.gamma * R
+
+            P = self.riccati_solver.solve_discounted_dare(A_d, B_d, Q_gamma, R_gamma, self.gamma)
+            
+            try:
+                inv_term = np.linalg.inv(R_gamma + self.gamma * B_d.T @ P @ B_d)
+            except np.linalg.LinAlgError:
+                raise np.linalg.LinAlgError("Matrix R is singular.")
+            
+            K = self.gamma * inv_term @ (B_d.T @ P @ A_d)
+
+            A, B = A_d, B_d
+
+            self.P_bar = P_bar
+            self.Q_gamma = Q_gamma
+            self.R_gamma = R_gamma
+
         else:
-            P = self.riccati_solver.solve_continuous_are(A, B, Q, R)
-            K = np.linalg.inv(R) @ (B.T @ P)
+            P = self.riccati_solver.solve_continuous_are(A_c, B_c, Q, R)
+            K = np.linalg.inv(R) @ (B_c.T @ P)
+
+            A, B = A_c, B_c
 
         # Store the Numpy version of the matrices
         self.A_np = A
@@ -87,6 +103,9 @@ class LQRAgent(AbstractAgent):
 
         self.x_star_np = np.zeros(self.state_dim, dtype=np.float64)
         self.x_star = torch.zeros(self.state_dim, dtype=torch.float32, device=self.device)
+
+        self.u_star_np = np.zeros(self.action_dim, dtype=np.float64)
+        self.u_star = torch.zeros(self.action_dim, dtype=torch.float32, device=self.device)
 
         # print("LQR P matrix:", P)
         # print("LQR gain K:", self.K)

@@ -14,10 +14,17 @@ class LyapunovCritic(nn.Module):
             output_size=1,
             inner_activation=inner_activation,
             output_activation=nn.Sigmoid()
-            )
+        )
 
     def forward(self, x):
         return self.model(x).squeeze(-1)
     
+    def forward_with_grad(self, x):
+        y = self(x)
+        jacob = torch.autograd.functional.jacobian(self, (x,), create_graph=True)[0]
+        grad = torch.diagonal(jacob, dim1=0, dim2=1).T
+        return y, grad
+
     def forward_dreal(self, x_vars):
         return self.model.forward_dreal(x_vars)
+    
