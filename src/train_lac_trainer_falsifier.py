@@ -55,7 +55,7 @@ def run_cegar_training():
     
     MAX_CEGAR_ITERATIONS = 20
     TRAINING_STEPS_PER_ITERATION = 1000
-    CERTIFICATION_LEVEL_C = 0.7
+    CERTIFICATION_LEVEL_C = 0.5
     
     ep_actor_losses = []
     ep_critic_losses = []

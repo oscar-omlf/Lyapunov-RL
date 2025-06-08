@@ -56,8 +56,8 @@ class LyapunovAgent(AbstractAgent):
     def add_transition(self, transition: tuple) -> None:
         pass
 
-    def update(self):
-        loss = self.trainer.train()
+    def update(self, counter_examples: list = None):
+        loss = self.trainer.train(counter_examples=counter_examples)
         return loss
 
     def policy(self, state):

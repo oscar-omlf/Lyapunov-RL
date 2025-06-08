@@ -153,29 +153,28 @@ def double_integrator_dynamics_dreal(state_vars, action_vars):
 
 
 def vanderpol_dynamics_torch(state: torch.Tensor, action: torch.Tensor, mu: float = 1.0) -> torch.Tensor:
-    if state.ndim == 1:  # Single sample
+    if state.ndim == 1:
         x1, x2 = state[0], state[1]
         u = action[0]
-        
         x1_dot = x2
-        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
+        x2_dot = -x1 + mu * (1 - x1**2) * x2 + u
         return torch.stack([x1_dot, x2_dot])
-    elif state.ndim == 2:  # Batch of samples
+    
+    elif state.ndim == 2:
         x1 = state[:, 0]
         x2 = state[:, 1]
-        u = action[:, 0] # Assuming action is (N,1) so u becomes (N,)
-        
+        u = action[:, 0]        
         x1_dot = x2
-        x2_dot = x1 - mu * (1 - x1**2) * x2 + u
+        x2_dot = -x1 + mu * (1 - x1**2) * x2 + u
         return torch.stack([x1_dot, x2_dot], dim=1)
 
 
 def vanderpol_dynamics_np(state: np.ndarray, action: np.ndarray, mu: float = 1.0) -> np.ndarray:
-    if state.ndim == 1: # Single sample
+    if state.ndim == 1:
         state = state.reshape(1, -1)
-    if action.ndim == 0: # Single scalar action
+    if action.ndim == 0:
         action = np.array([action]).reshape(1, -1)
-    elif action.ndim == 1 and action.shape[0] == state.shape[0]: # Batch of scalar actions
+    elif action.ndim == 1 and action.shape[0] == state.shape[0]:
         action = action.reshape(-1,1)
 
 

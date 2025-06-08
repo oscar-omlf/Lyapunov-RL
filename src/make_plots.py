@@ -105,25 +105,6 @@ def plot_lyapunov_3d(
 device_name = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Using device: {device_name}")
 
-
-config_lac = {
-        "agent_str": "Lyapunov-AC",
-        "alpha": 0.1,
-        "lr": 3e-3,
-        "dynamics_fn": vanderpol_dynamics_torch,
-        "batch_size": 64,
-        "num_paths_sampled": 8,
-        "dt": 0.01,
-        "norm_threshold": 5e-2,
-        "integ_threshold": 50,
-        "r1_bounds": (np.array([-2.0, -2.0]), np.array([2.0, 2.0])),
-        "actor_hidden_sizes": (30, 30),
-        "critic_hidden_sizes": (30, 30),
-        "state_space": np.zeros(2),
-        "action_space":np.zeros(1),
-        "max_action": MAX_ACTION
-}
-
 config_lac_pendulum = {
     "agent_str": "Lyapunov-AC",
     "model_name": "LAC",
@@ -147,7 +128,7 @@ config_lac_pendulum = {
 print("Initializing Lyapunov-AC Agent...")
 lac_agent = LyapunovAgent(config=config_lac_pendulum)
 
-lac_agent.load(file_path='./logs/LAC/run_1/', episode=3000)
+lac_agent.load(file_path='./logs/LAC/run_2/', episode=3000) 
 print("Lyapunov-AC Agent loaded successfully.")
 
 config_lqr = {
@@ -240,13 +221,13 @@ plot_streamlines(ax_2d, X_flow_np, Y_flow_np,
 
 # Contour for LQR V(x)
 alpha = 0.2
-lqr_contour_val = 0.430  # TODO: Tune this!
+lqr_contour_val = 0.4230  # TODO: Tune this!
 lqr_contour_val = math.tanh(lqr_contour_val) / alpha
 print(f"LQR certified c* = {lqr_contour_val:.4f}")
 ax_2d.contour(X_grid_np, Y_grid_np, V_lqr_grid_np, levels=[lqr_contour_val], linewidths=2, colors='magenta', linestyles='--')
 
 # Contour for LyAC W(x)
-lyac_contour_val = 0.0241
+lyac_contour_val = 0.0779
 ax_2d.contour(X_grid_np, Y_grid_np, W_grid_np, levels=[lyac_contour_val],linewidths=2, colors='red')
 
 # Plot Styling

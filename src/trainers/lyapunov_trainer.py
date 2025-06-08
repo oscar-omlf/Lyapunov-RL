@@ -331,7 +331,7 @@ class LyapunovTrainer(Trainer):
         W0 = self.critic_model(torch.zeros((1, self.state_dim), device=self.device)).squeeze().item()
         x = dreal_var(self.state_dim)
 
-        # --- Construct dReal expressions ---
+        # Construct dReal expressions
         u = self.actor_model.forward_dreal(x)
         fx = self.dynamics_fn_dreal(x, u)
         Wx = self.critic_model.forward_dreal(x)[0]
@@ -349,7 +349,7 @@ class LyapunovTrainer(Trainer):
                 Wx <= W0
             )
         )
-        r1 = d.CheckSatisfiability(condition1, 0.01)
+        r1 = d.CheckSatisfiability(condition1, 0.001)
         if r1:
             print("Verification failed on Condition 1 (Lie Deriv or V(x)<=V(0) violated).")
             return (False, r1)
@@ -359,10 +359,10 @@ class LyapunovTrainer(Trainer):
             self.on_boundry_dreal(x, scale=scale),
             Wx <= level
         )
-        r2 = d.CheckSatisfiability(condition2, 0.01)
+        r2 = d.CheckSatisfiability(condition2, 0.001)
         if r2:
             print("Verification failed on Condition 2 (RoA touches boundary).")
             return (False, r2)
 
-        print("--- Verification PASSED for this level ---")
+        print("Verification PASSED for this level")
         return (True, None)

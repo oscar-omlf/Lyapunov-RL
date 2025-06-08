@@ -20,9 +20,16 @@ class LyapunovCritic(nn.Module):
         return self.model(x).squeeze(-1)
     
     def forward_with_grad(self, x):
+        x.requires_grad_(True)        
         y = self(x)
-        jacob = torch.autograd.functional.jacobian(self, (x,), create_graph=True)[0]
-        grad = torch.diagonal(jacob, dim1=0, dim2=1).T
+        
+        grad = torch.autograd.grad(
+            outputs=y.sum(), 
+            inputs=x, 
+            create_graph=True
+        )[0]
+        
+        x.requires_grad_(False)
         return y, grad
 
     def forward_dreal(self, x_vars):

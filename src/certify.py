@@ -74,7 +74,7 @@ config_lqr = {
 agent_lac = AgentFactory.create_agent(config=config_lac_pendulum)
 agent_lqr = AgentFactory.create_agent(config=config_lqr)
 
-agent_lac.load(file_path='./logs/LAC/run_1/', episode=3000)
+agent_lac.load(file_path='./logs/LAC/run_3/', episode=3000)
 
 c_star = bisection(agent_lac.trainer.check_lyapunov, LEVEL_INIT)
 print(f"\nLyAC certified c* = {c_star:.4f}")
