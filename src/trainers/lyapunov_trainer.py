@@ -67,7 +67,7 @@ class LyapunovTrainer(Trainer):
 
         print('Lyapunov Trainer Initialized (Standalone LAC)!')
 
-    def train(self):
+    def train(self, counter_examples: list = None):
         # Use GPU-based sampling and vectorized trajectory simulation
         init_states = sample_in_region_torch(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
         traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
@@ -84,7 +84,13 @@ class LyapunovTrainer(Trainer):
         Lr = F.mse_loss(Wx_Lr, target)
 
         # 3) Physics-Informed Loss (PDE residual)
-        init_states_in = sample_in_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
+        if counter_examples is not None and len(counter_examples) > 0:
+            ce_tensor = torch.as_tensor(counter_examples, dtype=torch.float32, device=self.device)
+            random_samples = sample_in_region_torch(self.batch_size - len(counter_examples), self.lb_tensor, self.ub_tensor, self.device)
+            init_states_in = torch.cat([ce_tensor, random_samples], dim=0)
+        else:
+            init_states_in = sample_in_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
+
         Wx_in, grad_Wx_in = self.critic_model.forward_with_grad(init_states_in)
 
         current_actions = self.actor_model(init_states_in)
@@ -100,10 +106,10 @@ class LyapunovTrainer(Trainer):
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
-        # grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
-        # unit_grad = grad_Wx_in / (grad_norm + 1e-8)
-        # Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
-        Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
+        grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
+        unit_grad = grad_Wx_in / (grad_norm + 1e-8)
+        Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
+        # Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
         # Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * fxu_for_actor, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
@@ -318,9 +324,45 @@ class LyapunovTrainer(Trainer):
             ),
             0.01
         )
-        print('---')
-        print('r1', r1)
-        print('---')
-        print('r2', r2)
-        print('---')
         return r1, r2
+
+    def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5):
+        print(f"Verifying with c = {level:.4f} and eps = {eps:.2f}...")
+        W0 = self.critic_model(torch.zeros((1, self.state_dim), device=self.device)).squeeze().item()
+        x = dreal_var(self.state_dim)
+
+        # --- Construct dReal expressions ---
+        u = self.actor_model.forward_dreal(x)
+        fx = self.dynamics_fn_dreal(x, u)
+        Wx = self.critic_model.forward_dreal(x)[0]
+        
+        lie_derivative_W = sum(fx[i] * Wx.Differentiate(x[i]) for i in range(self.state_dim))
+        x_norm_sq = sum(xi * xi for xi in x)
+
+        # Checks for V(x) > V(0) AND dV/dt >= 0 inside the region
+        condition1 = d.And(
+            x_norm_sq >= eps**2,
+            self.in_domain_dreal(x, scale),
+            Wx <= level,
+            d.Or(
+                lie_derivative_W >= 0,
+                Wx <= W0
+            )
+        )
+        r1 = d.CheckSatisfiability(condition1, 0.01)
+        if r1:
+            print("Verification failed on Condition 1 (Lie Deriv or V(x)<=V(0) violated).")
+            return (False, r1)
+        
+        # Checks that the level set does not touch the boundary
+        condition2 = d.And(
+            self.on_boundry_dreal(x, scale=scale),
+            Wx <= level
+        )
+        r2 = d.CheckSatisfiability(condition2, 0.01)
+        if r2:
+            print("Verification failed on Condition 2 (RoA touches boundary).")
+            return (False, r2)
+
+        print("--- Verification PASSED for this level ---")
+        return (True, None)
