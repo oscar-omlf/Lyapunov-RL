@@ -28,10 +28,11 @@ class LQRAgent(AbstractAgent):
             self.g = config['g']
             self.m = config['m']
             self.l = config['l']
+            self.b = config['b']
 
             A_c = np.array([
                 [0.0, 1.0],
-                [self.g / self.l, 0.0]
+                [self.g / self.l, -self.b / (self.m * self.l**2)]
             ], dtype=np.float64)
 
             B_c = np.array([
