@@ -14,7 +14,7 @@ from util.sampling import sample_in_region_torch, sample_out_of_region_torch
 from util.rk4_step import rk4_step
 
 import dreal as d
-from util.dreal import dreal_var, in_box, on_boundary
+from util.dreal import dreal_var, in_box, on_boundary, is_unsat
 
 
 class LyapunovTrainer(Trainer):
@@ -95,9 +95,7 @@ class LyapunovTrainer(Trainer):
 
         current_actions = self.actor_model(init_states_in)
         current_fxu = self.dynamics_fn(init_states_in, current_actions)
-        # actions_detached = self.actor_model(init_states_in).detach()
-        # fxu_detached = self.dynamics_fn(init_states_in, actions_detached)
-
+        
         phix = torch.norm(init_states_in, p=2, dim=1) 
 
         # changed current_fxu to fxu_detached
@@ -106,11 +104,10 @@ class LyapunovTrainer(Trainer):
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
-        grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
-        unit_grad = grad_Wx_in / (grad_norm + 1e-8)
-        Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
-        # Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
-        # Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * fxu_for_actor, dim=1))
+        # grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
+        # unit_grad = grad_Wx_in / (grad_norm + 1e-8)
+        # Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
+        Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) ≈ 1
         init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
@@ -231,21 +228,17 @@ class LyapunovTrainer(Trainer):
         plt.savefig(plot_path)
         plt.close()
 
-    # dReal-specific functions
     def _sanity_network(self):
-        from util.dreal import dreal_var
         x_np = np.random.randn(self.state_dim)
         x_d  = dreal_var(self.state_dim)
-        y_pt = self.actor_model(torch.as_tensor(x_np, dtype=torch.float32,
-                                                device=self.device).unsqueeze(0))[0].item()
+        y_pt = self.actor_model(torch.as_tensor(x_np, dtype=torch.float32, device=self.device).unsqueeze(0))[0].item()
         y_dr = self.actor_model.forward_dreal(x_d)[0]
         fsat = d.And(*[x_d[i] == x_np[i] for i in range(self.state_dim)],
                      y_dr >= y_pt - 1e-3,
                      y_dr <= y_pt + 1e-3)
-        assert d.CheckSatisfiability(fsat, 1e-4).is_unsat()
+        assert d.CheckSatisfiability(fsat, 1e-4) is not None
 
     def _sanity_dynamics(self):
-        from util.dreal import dreal_var
         x_np = np.random.randn(self.state_dim)
         u_np = np.random.randn(1)
         x_d  = dreal_var(self.state_dim)
@@ -257,12 +250,9 @@ class LyapunovTrainer(Trainer):
                [u_d[0] == u_np[0]] + \
                [f_dr[i] >= f_pt[i]-1e-3 for i in range(self.state_dim)] + \
                [f_dr[i] <= f_pt[i]+1e-3 for i in range(self.state_dim)]
-        assert d.CheckSatisfiability(d.And(*cons), 1e-4).is_unsat()
+        assert d.CheckSatisfiability(d.And(*cons), 1e-4) is not None
 
-    def in_domain_dreal(self, x, scale=1.):
-        """
-        :param x: np.array[dreal.Variable], [2,]
-        """
+    def in_domain_dreal(self, x, scale=1.0):
         return d.And(
             x[0] >= self.lb[0] * scale,
             x[0] <= self.ub[0] * scale,
@@ -270,7 +260,7 @@ class LyapunovTrainer(Trainer):
             x[1] <= self.ub[1] * scale
         )
     
-    def on_boundry_dreal(self, x, scale=2.):
+    def on_boundary_dreal(self, x, scale=2.0):
         condition1 = d.And(
             x[0] >= self.lb[0] * scale * 0.99,
             x[0] <= self.ub[0] * scale * 0.99,
@@ -319,50 +309,65 @@ class LyapunovTrainer(Trainer):
         
         r2 = d.CheckSatisfiability(
             d.And(
-                self.on_boundry_dreal(x, scale=scale),
+                self.on_boundary_dreal(x, scale=scale),
                 Wx <= level
             ),
             0.01
         )
+        print('----------')
+        print(r1)
+        print(r2)
+        print('----------')
         return r1, r2
 
     def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5):
         print(f"Verifying with c = {level:.4f} and eps = {eps:.2f}...")
+        # Get W(0) value
         W0 = self.critic_model(torch.zeros((1, self.state_dim), device=self.device)).squeeze().item()
+        
+        # Define dReal variables
         x = dreal_var(self.state_dim)
-
-        # Construct dReal expressions
+        
+        # Construct dReal expressions for dynamics and Lyapunov function
         u = self.actor_model.forward_dreal(x)
         fx = self.dynamics_fn_dreal(x, u)
         Wx = self.critic_model.forward_dreal(x)[0]
         
+        # Construct Lie derivative and state norm
         lie_derivative_W = sum(fx[i] * Wx.Differentiate(x[i]) for i in range(self.state_dim))
-        x_norm_sq = sum(xi * xi for xi in x)
+        x_norm = d.sqrt(sum(xi * xi for xi in x)) # Use sqrt for direct comparison with eps
 
-        # Checks for V(x) > V(0) AND dV/dt >= 0 inside the region
-        condition1 = d.And(
-            x_norm_sq >= eps**2,
-            self.in_domain_dreal(x, scale),
+        # --- Condition 1: Find a state inside the RoA that violates conditions ---
+        # This is the primary falsification query.
+        # It looks for a point where:
+        #   1. The norm is NOT insignificant (>= eps)
+        #   2. It's within the region of interest (R2)
+        #   3. The Lyapunov candidate W(x) is below the level c
+        #   4. EITHER the Lie derivative is non-negative OR W(x) is not greater than W(0)
+        violation_condition = d.And(
+            x_norm >= eps,
+            self.in_domain_dreal(x, scale), # Use the correct helper function
             Wx <= level,
             d.Or(
                 lie_derivative_W >= 0,
                 Wx <= W0
             )
         )
-        r1 = d.CheckSatisfiability(condition1, 0.001)
+        r1 = d.CheckSatisfiability(violation_condition, 0.001)
         if r1:
-            print("Verification failed on Condition 1 (Lie Deriv or V(x)<=V(0) violated).")
+            print("FALSIFIED: Found counter-example violating Lie derivative or positivity.")
             return (False, r1)
-        
-        # Checks that the level set does not touch the boundary
-        condition2 = d.And(
-            self.on_boundry_dreal(x, scale=scale),
+
+        # --- Condition 2: Check if the level set escapes the boundary of R2 ---
+        boundary_condition = d.And(
+            self.on_boundary_dreal(x, scale=scale),
             Wx <= level
         )
-        r2 = d.CheckSatisfiability(condition2, 0.001)
+        r2 = d.CheckSatisfiability(boundary_condition, 0.001)
         if r2:
-            print("Verification failed on Condition 2 (RoA touches boundary).")
+            print("FALSIFIED: RoA level set touches the boundary of the verified region.")
             return (False, r2)
 
+        # If both checks are UNSAT, the system is verified for this level
         print("Verification PASSED for this level")
         return (True, None)

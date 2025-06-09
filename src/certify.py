@@ -74,7 +74,14 @@ config_lqr = {
 agent_lac = AgentFactory.create_agent(config=config_lac_pendulum)
 agent_lqr = AgentFactory.create_agent(config=config_lqr)
 
-agent_lac.load(file_path='./logs/LAC/run_3/', episode=3000)
+agent_lac.load(file_path='./logs/LAC_CEGAR/run_5/', episode=20000)
+
+print(agent_lac.trainer._sanity_network())
+print(agent_lac.trainer._sanity_dynamics())
+
+r = agent_lac.trainer.check_lyapunov_with_ce(level=LEVEL_INIT, scale=2.0, eps=0.5)
+print(r)
+exit()
 
 c_star = bisection(agent_lac.trainer.check_lyapunov, LEVEL_INIT)
 print(f"\nLyAC certified c* = {c_star:.4f}")
@@ -103,5 +110,5 @@ def lqr_check(level, scale=2., eps=0.5, delta=1e-4):
             d.And(on_boundary(x,lb,ub,scale), W<=level), delta)
     return r1, r2
 
-c_star = bisection(lqr_check, LEVEL_INIT)
-print(f"\nLQR certified c* = {c_star:.4f}")
+# c_star = bisection(lqr_check, LEVEL_INIT)
+# print(f"\nLQR certified c* = {c_star:.4f}")

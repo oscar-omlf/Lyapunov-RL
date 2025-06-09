@@ -6,7 +6,7 @@ from util.dreal import dreal_var, dreal_elementwise, dreal_sigmoid
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size, inner_activation=nn.ReLU(), output_activation=None):
+    def __init__(self, input_size, hidden_sizes, output_size, inner_activation=nn.ReLU, output_activation=None):
         """
         :param inner_activation: activation function to use for all hidden layers.
         """
@@ -15,7 +15,7 @@ class MLP(nn.Module):
         last_size = input_size
         for size in hidden_sizes:
             layers.append(nn.Linear(last_size, size))
-            layers.append(inner_activation)
+            layers.append(inner_activation())
             last_size = size
         layers.append(nn.Linear(last_size, output_size))
         if output_activation is not None:

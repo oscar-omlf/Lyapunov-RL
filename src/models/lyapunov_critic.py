@@ -6,7 +6,7 @@ from models.mlp import MLP
 
 
 class LyapunovCritic(nn.Module):
-    def __init__(self, input_size, hidden_sizes=(20, 20), inner_activation=nn.Tanh()):
+    def __init__(self, input_size, hidden_sizes=(20, 20), inner_activation=nn.Tanh):
         super(LyapunovCritic, self).__init__()
         self.model = MLP(
             input_size=input_size,

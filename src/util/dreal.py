@@ -19,6 +19,23 @@ def on_boundary(x, lb, ub, scale=2.0, pad=0.01):
     inner = in_box(x, lb, ub, scale*(1-pad))
     return d.And(outer, d.Not(inner))
 
+def on_boundry_dreal(self, x, scale=2.0):
+    condition1 = d.And(
+        x[0] >= self.lb[0] * scale * 0.99,
+        x[0] <= self.ub[0] * scale * 0.99,
+        x[1] >= self.lb[1] * scale * 0.99,
+        x[1] <= self.ub[1] * scale * 0.99
+    )
+    condition2 = d.Not(
+        d.And(
+            x[0] >= self.lb[0] * scale * 0.97,
+            x[0] <= self.ub[0] * scale * 0.97,
+            x[1] >= self.lb[1] * scale * 0.97,
+            x[1] <= self.ub[1] * scale * 0.97
+        )
+    )
+    return d.And( condition1, condition2 )
+
 def is_unsat(result) -> bool:
     """True iff dReal returned UNSAT."""
     return result is None or (isinstance(result, str) and result.lower() == "unsat")
