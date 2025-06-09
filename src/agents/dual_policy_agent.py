@@ -42,9 +42,6 @@ class DualPolicyAgent(AbstractAgent):
         self.blending_function = BlendingFunction(self.lqr_agent, beta_h=self.beta, c_star=self.c_star, device=self.device)
         self.riccati_solver = RiccatiSolver()
 
-        self.dynamics_fn = config.get("dynamics_fn")
-        self.dynamics_fn_dreal = config.get("dynamics_fn_dreal")
-
         self.max_action = config.get("max_action")
         
         self.actor_model = None
@@ -63,25 +60,37 @@ class DualPolicyAgent(AbstractAgent):
         """
         Return the blended action: pi_theta(x) = pi_loc(x) + pi_glo(x).
         Where pi_glo(x) is defined as pi_glo(x) = h1(x)*(pi_td3(x) - pi_loc(x)).
-        Assumes state is a NumPy array.
         """
-        actions_learned = self.actor_model(state)
-        actions_loc = self.u_star + self.lqr_agent.policy(state)
+        with torch.no_grad():
+            state_t = torch.as_tensor(state, dtype=torch.float32, device=self.device)
 
-        h1_blend = self.blending_function.get_h1(state)
+            pi_loc = self._get_local_action(state_t)
+            pi_glo = self._get_global_action(state_t)
 
-        if h1_blend.ndim == 1:
-            h1_blend = h1_blend.unsqueeze(-1)
+            h1_val = self.blending_function.get_h1(state_t)
 
-        combined_actions = actions_loc + h1_blend * (actions_learned - actions_loc)
+            if h1_val.ndim == 1:
+                h1_val = h1_val.unsqueeze(-1)
 
-        return combined_actions
+            blended_action = pi_loc + h1_val * (pi_glo - pi_loc)
+            final_action = torch.clamp(blended_action, -self.max_action, self.max_action)
 
-    def load(self, file_path: str = './saved_models/') -> None:
-        self.lac_agent.load(file_path)
+            return final_action.cpu().numpy().flatten()
 
-    def save(self, file_path: str = './saved_models/') -> None:
-        self.lac_agent.save(file_path)
+    def _get_local_action(self, state_torch: torch.Tensor) -> torch.Tensor:
+        k_error = -(state_torch @ self.lqr_agent.K.T)
+        pi_loc_actions = self.u_star.unsqueeze(0) + k_error
+        pi_loc_actions = torch.clamp(pi_loc_actions, -self.max_action, self.max_action)
+        return pi_loc_actions
+    
+    def _get_global_action(self, state_torch: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    def load(self, file_path) -> None:
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    def save(self, file_path) -> None:
+        raise NotImplementedError("Subclasses must implement this method.")
 
     def lqr_check(self, level, scale=2., eps=0.5, delta=1e-4, alpha=0.2):
         x = dreal_var(2)

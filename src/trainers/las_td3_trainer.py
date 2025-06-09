@@ -48,14 +48,10 @@ class LAS_TD3Trainer:
         with torch.no_grad():
             noise = (torch.randn_like(actions) * self.policy_noise).clamp(-self.noise_clip, self.noise_clip)
             next_actions = (self.agent.actor_target(next_states) + noise).clamp(-self.agent.max_action, self.agent.max_action)
-                        
-            next_actions_target_blended = self.agent.get_blended_action(
+            next_actions_target_blended = self.agent._get_blended_action(
                 state_torch=next_states, 
                 mu_theta_action_torch=next_actions
             )
-
-            # if not torch.allclose(next_actions, next_actions_target_blended, atol=1e-6):
-            #     print('next_actions != next_actions_target_blended')
 
             target_Q1, target_Q2 = self.agent.get_composite_Q_values(
                 state_torch=next_states, 
@@ -80,11 +76,11 @@ class LAS_TD3Trainer:
 
         actor_loss_val = None
         if self._update_counter % self.policy_freq == 0:
-            actor_actions_blended = self.agent.get_blended_action(
+            actor_actions_global = self.agent.actor_model(states)
+
+            actor_actions_blended = self.agent._get_blended_action(
                 state_torch=states,
-                mu_theta_action_torch=None,
-                use_grad=True,
-                use_target_actor=False
+                mu_theta_action_torch=actor_actions_global
             )
             
             q1_for_actor_loss = self.agent.get_composite_Q1_value(

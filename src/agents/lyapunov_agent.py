@@ -22,16 +22,13 @@ class LyapunovAgent(AbstractAgent):
         self.integ_threshold = config.get("integ_threshold")
         self.r1_bounds = config.get("r1_bounds")
         
-        state_dim = self.state_space.shape[0]
-        action_dim = self.action_space.shape[0]
-
         actor_hidden_sizes = config.get("actor_hidden_sizes")
         critic_hidden_sizes = config.get("critic_hidden_sizes")
 
         self.max_action = config.get("max_action")
         
-        self.actor_model = LyapunovActor(state_dim, actor_hidden_sizes, action_dim, max_action=self.max_action).to(device=self.device)
-        self.critic_model = LyapunovCritic(state_dim, critic_hidden_sizes).to(device=self.device)
+        self.actor_model = LyapunovActor(self.state_dim, actor_hidden_sizes, self.action_dim, max_action=self.max_action).to(device=self.device)
+        self.critic_model = LyapunovCritic(self.state_dim, critic_hidden_sizes).to(device=self.device)
 
         self.run_dir = config.get("run_dir")
 
@@ -47,7 +44,7 @@ class LyapunovAgent(AbstractAgent):
             dt=self.dt,
             dynamics_fn=self.dynamics_fn,
             dynamics_fn_dreal=self.dynamics_fn_dreal,
-            state_dim=state_dim,
+            state_dim=self.state_dim,
             r1_bounds=self.r1_bounds,
             run_dir=self.run_dir,
             device=self.device,

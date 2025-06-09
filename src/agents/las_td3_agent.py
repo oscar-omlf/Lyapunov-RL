@@ -88,12 +88,6 @@ class LAS_TD3Agent(DualPolicyAgent):
         H_matrix = torch.from_numpy(H_matrix_np).to(dtype=torch.float32, device=self.device)
 
         return H_matrix, H_matrix_np
-    
-    def _compute_pi_loc_torch_batch(self, state_torch: torch.Tensor) -> torch.Tensor:
-        k_error = -(state_torch @ self.lqr_agent.K.T)
-        k_error = torch.clamp(k_error, -self.max_action, self.max_action)
-        pi_loc_actions = self.u_star.unsqueeze(0) + k_error
-        return pi_loc_actions
 
     def _compute_Q_loc(self, state_torch: torch.Tensor, action_torch: torch.Tensor) -> torch.Tensor:
         current_x_star = self.x_star.unsqueeze(0)
@@ -152,43 +146,10 @@ class LAS_TD3Agent(DualPolicyAgent):
         Q_comp1 = q_loc + h2_val * (omega_q1 - q_loc)
         return Q_comp1
 
-    def get_blended_action(
-        self,
-        state_torch: torch.Tensor,
-        mu_theta_action_torch: torch.Tensor = None,
-        use_grad: bool = False,
-        use_target_actor: bool = False
-    ):
-        actor_net_to_use = self.actor_target if use_target_actor else self.actor_model
-
-        if mu_theta_action_torch is None:
-            if use_grad:
-                mu_theta_action_torch = actor_net_to_use(state_torch)
-            else:
-                with torch.no_grad():
-                    mu_theta_action_torch = actor_net_to_use(state_torch)
-
-        # if the action is smaller than -max action or bigger than max action, print a warning
-        if torch.any(mu_theta_action_torch < -self.max_action) or torch.any(mu_theta_action_torch > self.max_action):
-            print(f"Warning: mu_theta_action_torch is outside of the range [-{self.max_action}, {self.max_action}].")
-            print(f"mu_theta_action_torch = {mu_theta_action_torch}")
-
-        # return mu_theta_action_torch
-
-        pi_loc_batch_torch = self._compute_pi_loc_torch_batch(state_torch)
-
-        with torch.no_grad():
-            h1_val = self.blending_function.get_h1(state_torch)
-            if h1_val.ndim == 1:
-                h1_val = h1_val.unsqueeze(-1)
+    def _get_global_action(self, state_torch: torch.Tensor) -> torch.Tensor:
+        mu_theta_action = self.actor_model(state_torch)
         
-        blended_actions = pi_loc_batch_torch + h1_val * (mu_theta_action_torch - pi_loc_batch_torch)
-        blended_actions = torch.clamp(blended_actions, -self.max_action, self.max_action)
-        return blended_actions
-    
-    def policy(self, state_torch: torch.Tensor) -> torch.Tensor:
-        with torch.no_grad():
-            mu_theta_action = self.actor_model(state_torch)
+        if self.expl_noise > 0:
             noise = torch.normal(
                 0, self.expl_noise * self.max_action,
                 size=mu_theta_action.shape,
@@ -197,11 +158,18 @@ class LAS_TD3Agent(DualPolicyAgent):
             mu_theta_action += noise
             mu_theta_action = torch.clamp(mu_theta_action, -self.max_action, self.max_action)
 
-            # return mu_theta_action
-            blended_action = self.get_blended_action(state_torch, mu_theta_action)
+        return mu_theta_action
 
-            return blended_action  # should we unsqueeze here? or squeeze? or do smt???
+    def _get_blended_action(self, state_torch: torch.Tensor, mu_theta_action_torch: torch.Tensor) -> torch.Tensor:
+        pi_loc_batch_torch = self._get_local_action(state_torch)
 
+        h1_val = self.blending_function.get_h1(state_torch)
+        if h1_val.ndim == 1:
+            h1_val = h1_val.unsqueeze(-1)
+
+        blended_actions = pi_loc_batch_torch + h1_val * (mu_theta_action_torch - pi_loc_batch_torch)
+        blended_actions = torch.clamp(blended_actions, -self.max_action, self.max_action)
+        return blended_actions
 
     def add_transition(self, transition: tuple) -> None:
         """
@@ -222,7 +190,7 @@ class LAS_TD3Agent(DualPolicyAgent):
         """
         return self.trainer.train()
 
-    def save(self, file_path='./saved_models/') -> None:
+    def save(self, file_path) -> None:
         """
         Save the actor and critic networks.
         """
@@ -230,11 +198,11 @@ class LAS_TD3Agent(DualPolicyAgent):
         torch.save(self.actor_model.state_dict(), os.path.join(file_path, "td3_actor.pth"))
         torch.save(self.critic_model.state_dict(), os.path.join(file_path, "td3_critic.pth"))
 
-    def load(self, file_path='./saved_models/') -> None:
+    def load(self, file_path) -> None:
         """
         Load the actor and critic networks, and synchronize the trainer's target networks.
         """
         self.actor_model.load_state_dict(torch.load(os.path.join(file_path, "td3_actor.pth")))
         self.critic_model.load_state_dict(torch.load(os.path.join(file_path, "td3_critic.pth")))
-        self.trainer.actor_target = copy.deepcopy(self.actor_model)
-        self.trainer.critic_target = copy.deepcopy(self.critic_model)
+        self.actor_target = copy.deepcopy(self.actor_model)
+        self.critic_target = copy.deepcopy(self.critic_model)

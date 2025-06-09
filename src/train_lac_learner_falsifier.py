@@ -62,7 +62,7 @@ def run_cegar_training():
 
     agent = AgentFactory.create_agent(config=config_lac)
     
-    MAX_CEGAR_ITERATIONS = 20
+    MAX_CEGAR_ITERATIONS = 50
     TRAINING_STEPS_PER_ITERATION = 1000
     CERTIFICATION_LEVEL_C = 0.5
     

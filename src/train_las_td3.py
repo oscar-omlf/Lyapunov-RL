@@ -1,16 +1,16 @@
+import os
 import torch
 import numpy as np
-import os
 
+from util.rk4_step import rk4_step
+from agents.las_td3_agent import LAS_TD3Agent
+from util.metrics_tracker import MetricsTracker
+from util.logger_utils import setup_run_directory_and_logging
 from util.dynamics import (
-    pendulum_dynamics_torch,
     pendulum_dynamics_np,
     pendulum_dynamics_dreal, 
     compute_pendulum_reward
 )
-from util.rk4_step import rk4_step
-from agents.las_td3_agent import LAS_TD3Agent
-from util.metrics_tracker import MetricsTracker
 
 
 def main():
@@ -21,9 +21,11 @@ def main():
     PENDULUM_G = 9.81
     PENDULUM_M = 0.15
     PENDULUM_L = 0.5
+    PENDULUM_B = 0.1
     MAX_ACTION_VAL = 1.0
 
     config = {
+        "model_name": "LAS_TD3_Pendulum",
         "max_action": MAX_ACTION_VAL,
         "beta": 0.6,
         "dynamics_fn_dreal": pendulum_dynamics_dreal,
@@ -37,6 +39,7 @@ def main():
             "g": PENDULUM_G,
             "m": PENDULUM_M,
             "l": PENDULUM_L,
+            "b": PENDULUM_B,
             "max_action": MAX_ACTION_VAL,
             "state_space": np.zeros(2),
             "action_space": np.zeros(1),
@@ -58,8 +61,10 @@ def main():
         "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
     }
     
+    run_dir, logger = setup_run_directory_and_logging(config)
+    config["run_dir"] = run_dir
+
     agent = LAS_TD3Agent(config)
-    agent_id_str = "LAS_TD3_Pendulum" 
 
     tracker = MetricsTracker()
 
@@ -76,15 +81,13 @@ def main():
     total_critic_losses = []
 
     for episode in range(NUM_EPISODES):
-        ep_rewards = []
         ep_actor_losses = []
         ep_critic_losses = []
 
-        current_state_np = np.array([
+        current_state = np.array([
                     np.random.uniform(-np.pi, np.pi),   
                     np.random.uniform(-8.0, 8.0)
                 ])
-        current_state_torch = torch.as_tensor(current_state_np, dtype=torch.float32, device=DEVICE)
         
         episode_reward = 0
         episode_steps = 0
@@ -93,45 +96,40 @@ def main():
         for step in range(NUM_STEPS_PER_EPISODE):
 
             if total_steps_taken < initial_exploration_steps:
-                action_np = np.random.uniform(-MAX_ACTION_VAL, MAX_ACTION_VAL, size=(agent.action_dim,)) 
-                action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
+                action = np.random.uniform(-MAX_ACTION_VAL, MAX_ACTION_VAL, size=(agent.action_dim,)) 
             else:
-                action_torch_batched = agent.policy(current_state_torch.unsqueeze(0)) 
-                action_torch = action_torch_batched.squeeze(0) # Shape: (action_dim,)
-                action_np = action_torch.cpu().numpy()
+                action = agent.policy(current_state) 
 
-            next_state_np = rk4_step(pendulum_dynamics_np, current_state_np, action_np, DT).squeeze()
+            next_state = rk4_step(pendulum_dynamics_np, current_state, action, DT).squeeze()
 
-            next_state_np[0] = (next_state_np[0] + np.pi) % (2 * np.pi) - np.pi
-            next_state_np[1] = np.clip(next_state_np[1], -8.0, 8.0) 
-
-            next_state_torch = torch.as_tensor(next_state_np, dtype=torch.float32, device=DEVICE)
+            next_state[0] = (next_state[0] + np.pi) % (2 * np.pi) - np.pi
+            next_state[1] = np.clip(next_state[1], -8.0, 8.0) 
 
             reward_float = compute_pendulum_reward(
-                current_state_np,
-                action_np.item()
+                current_state,
+                action.item()
             )
             if reward_float < -17.0:
-                print(current_state_np)
-                print(action_np)
-                print(f"Reward is {reward_float:.2f}. Terminating episode.")
+                logger.error(f"Reward is {reward_float:.2f}. Terminating episode.")
+                logger.error(f"State: {current_state}")
+                logger.error(f"Action: {action}")
                 exit()
 
-            reward_torch = torch.as_tensor([reward_float], dtype=torch.float32, device=DEVICE)
-            
+            reward_np = np.array([reward_float])
+
             episode_reward += reward_float
             episode_steps += 1
             total_steps_taken += 1
 
             done_bool = (step == NUM_STEPS_PER_EPISODE - 1)
-            done_torch = torch.as_tensor([float(done_bool)], dtype=torch.float32, device=DEVICE)
+            done_np = np.array([float(done_bool)])
 
             agent.add_transition((
-                current_state_torch.cpu(),
-                action_torch.cpu(), 
-                reward_torch.cpu(), 
-                next_state_torch.cpu(), 
-                done_torch.cpu()
+                current_state,
+                action, 
+                reward_np, 
+                next_state, 
+                done_np
             ))
 
             actor_loss, critic_loss = None, None
@@ -145,21 +143,24 @@ def main():
 
             if critic_loss is None and total_steps_taken > initial_exploration_steps:
                 print('Potential Error: update() returned no loss when it should have.', step, total_steps_taken)
-
                     
-            ep_rewards.append(reward_float)
+            current_state = next_state
 
-            current_state_torch = next_state_torch
-            current_state_np = next_state_np
-
-            if step % 50 == 0 and (episode + 1) % PRINT_EVERY_EPISODES == 0 :
+            if step % 50 == 0 and (episode + 1) % PRINT_EVERY_EPISODES == 0:
                 with torch.no_grad():
-                    v_x = agent.blending_function.get_normalized_lyapunov_value(current_state_torch.unsqueeze(0))
-                    print(f"  Ep {episode+1}, Step {step+1}: v(x) = {v_x.item():.4f} "
-                          f"State: [{current_state_torch[0].item():.2f}, {current_state_torch[1].item():.2f}], "
-                          f"Action: {action_np.item() if action_np.ndim > 0 else action_np:.2f}, Reward: {reward_float:.2f}")
+                    current_state_t_for_log = torch.as_tensor(current_state, dtype=torch.float32, device=DEVICE)
+                    v_x = agent.blending_function.get_normalized_lyapunov_value(current_state_t_for_log.unsqueeze(0))
+
+                    log_msg = (
+                        f"Ep {episode+1}, Step {step+1}: v(x)={v_x.item():.4f} | "
+                        f"State=[{current_state[0]:.2f}, {current_state[1]:.2f}] | "
+                        f"Action={action.item():.2f} | Reward={reward_float:.2f}")
+                    
                     if actor_loss is not None and critic_loss is not None:
-                        print(f"    Losses A: {actor_loss:.4f}, C: {critic_loss:.4f}")
+                        log_msg += f" | Losses A={actor_loss:.4f}, C={critic_loss:.4f}"
+                    
+                    logger.info(log_msg)
+            
             if done_bool:
                 break
 
@@ -172,11 +173,18 @@ def main():
         if (episode + 1) % PRINT_EVERY_EPISODES == 0:
             print(f"Episode {episode+1}/{NUM_EPISODES} | Steps: {episode_steps} | Reward: {episode_reward:.2f}")
 
-    print("Training finished.")
-    
-    tracker.add_run_returns(agent_id_str, total_returns)
-    tracker.add_run_losses(agent_id_str, total_actor_losses, total_critic_losses)
-    tracker.save_top10_plots()
+    logger.info("--- Training Finished ---")
+
+    logger.info(f"Saving final model to {run_dir}")
+    agent.save(run_dir)
+
+    model_name = config["model_name"]
+    tracker.add_run_returns(model_name, total_returns)
+    tracker.add_run_losses(model_name, total_actor_losses, total_critic_losses)
+    tracker.save_top10_plots(folder=run_dir)
+    logger.info(f"Metrics plots saved to {run_dir}")
+
 
 if __name__ == "__main__":
     main()
+    
