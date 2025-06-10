@@ -74,7 +74,7 @@ def main():
         env_name = config['environment']
         is_discrete_discounted_lqr = config['discrete_discounted']
         agent_id_str = f"{env_name}_{'DiscreteDiscountedLQR' if is_discrete_discounted_lqr else 'ContinuousLQR'}"
-        print(f"\n--- Running: {agent_id_str} ---")
+        print(f"\nRunning: {agent_id_str}")
 
         num_stabilized_episodes = 0
         episode_returns = []

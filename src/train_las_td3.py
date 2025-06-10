@@ -29,7 +29,6 @@ def main():
         "max_action": MAX_ACTION_VAL,
         "beta": 0.6,
         "dynamics_fn_dreal": pendulum_dynamics_dreal,
-
         "LQR": {
             "agent_str": "LQR",
             "environment": "InvertedPendulum",
@@ -44,7 +43,6 @@ def main():
             "state_space": np.zeros(2),
             "action_space": np.zeros(1),
         },
-
         "gamma": 0.9,
         "tau": 0.005,
         "policy_freq": 2,
@@ -173,7 +171,7 @@ def main():
         if (episode + 1) % PRINT_EVERY_EPISODES == 0:
             print(f"Episode {episode+1}/{NUM_EPISODES} | Steps: {episode_steps} | Reward: {episode_reward:.2f}")
 
-    logger.info("--- Training Finished ---")
+    logger.info("Training Finished")
 
     logger.info(f"Saving final model to {run_dir}")
     agent.save(run_dir)

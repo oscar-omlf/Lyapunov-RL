@@ -160,17 +160,6 @@ class LAS_TD3Agent(DualPolicyAgent):
 
         return mu_theta_action
 
-    def _get_blended_action(self, state_torch: torch.Tensor, mu_theta_action_torch: torch.Tensor) -> torch.Tensor:
-        pi_loc_batch_torch = self._get_local_action(state_torch)
-
-        h1_val = self.blending_function.get_h1(state_torch)
-        if h1_val.ndim == 1:
-            h1_val = h1_val.unsqueeze(-1)
-
-        blended_actions = pi_loc_batch_torch + h1_val * (mu_theta_action_torch - pi_loc_batch_torch)
-        blended_actions = torch.clamp(blended_actions, -self.max_action, self.max_action)
-        return blended_actions
-
     def add_transition(self, transition: tuple) -> None:
         """
         Add a transition to the replay buffer.

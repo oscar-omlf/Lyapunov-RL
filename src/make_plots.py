@@ -128,18 +128,19 @@ config_lac_pendulum = {
 print("Initializing Lyapunov-AC Agent...")
 lac_agent = LyapunovAgent(config=config_lac_pendulum)
 
-lac_agent.load(file_path='./logs/LAC/run_2/', episode=3000) 
+lac_agent.load(file_path='logs/LAC_CEGAR/run_4/', episode=1000) 
 print("Lyapunov-AC Agent loaded successfully.")
 
 config_lqr = {
     "agent_str": "LQR",
     "environment": "InvertedPendulum",
-    "discrete_discounted": True,
+    "discrete_discounted": False,
     "gamma": 0.99,
     "dt": 0.03,
     "g": 9.81,
     "m": 0.15,
     "l": 0.5,
+    "b": 0.1,
     "max_action": 1.0,
     "state_space": np.zeros(2),
     "action_space": np.zeros(1),
@@ -221,13 +222,13 @@ plot_streamlines(ax_2d, X_flow_np, Y_flow_np,
 
 # Contour for LQR V(x)
 alpha = 0.2
-lqr_contour_val = 0.4230  # TODO: Tune this!
+lqr_contour_val = 0.3887  # TODO: Tune this!
 lqr_contour_val = math.tanh(lqr_contour_val) / alpha
 print(f"LQR certified c* = {lqr_contour_val:.4f}")
 ax_2d.contour(X_grid_np, Y_grid_np, V_lqr_grid_np, levels=[lqr_contour_val], linewidths=2, colors='magenta', linestyles='--')
 
 # Contour for LyAC W(x)
-lyac_contour_val = 0.0779
+lyac_contour_val = 0.8183
 ax_2d.contour(X_grid_np, Y_grid_np, W_grid_np, levels=[lyac_contour_val],linewidths=2, colors='red')
 
 # Plot Styling

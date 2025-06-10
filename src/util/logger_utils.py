@@ -37,7 +37,7 @@ def setup_run_directory_and_logging(config: dict, base_log_dir: str = "logs"):
     stream_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(stream_handler)
     
-    logger.info("--- Starting Training Run ---")
+    logger.info("Starting Training Run")
     logger.info(f"Run Directory: {run_dir}")
     config_str = json.dumps(config, indent=4, default=str)
     logger.info(f"Hyperparameters:\n{config_str}")

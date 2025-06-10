@@ -62,10 +62,10 @@ class LyapunovAgent(AbstractAgent):
         action = self.actor_model(s_tensor)
         return action.cpu().numpy().flatten()
 
-    def save(self, file_path='./saved_models/', episode=None):
+    def save(self, file_path, episode=None):
         torch.save(self.actor_model.state_dict(), file_path + "actor_model_" + str(episode) + ".pth")
         torch.save(self.critic_model.state_dict(), file_path + "critic_model_" + str(episode) + ".pth")
 
-    def load(self, file_path='./saved_models/', episode=None):
+    def load(self, file_path, episode=None):
         self.actor_model.load_state_dict(torch.load(file_path + 'actor_model_' + str(episode) + '.pth'))
         self.critic_model.load_state_dict(torch.load(file_path + 'critic_model_' + str(episode) + '.pth'))

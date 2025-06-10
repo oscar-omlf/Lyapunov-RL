@@ -3,58 +3,54 @@ import scipy.linalg
 import torch
 import dreal as d
 
-from agents.agent_factory import AgentFactory
-from util.dynamics import vanderpol_dynamics_torch
+from agents.las_lyapunov_agent import LAS_LyapunovAgent
+from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_dreal
 from util.dreal import is_unsat
 
 
-config_lac = {
-    "agent_str": "Lyapunov-AC",
-    "alpha": 0.1,
-    "actor_lr": 3e-3,
-    "critic_lr": 2e-3,
-    "dynamics_fn": vanderpol_dynamics_torch,
-    "batch_size": 64,
-    "num_paths_sampled": 8,
-    "dt": 0.01,
-    "norm_threshold": 5e-2,
-    "integ_threshold": 50,
-    "r1_bounds": (np.array([-2.0, -2.0]), np.array([2.0, 2.0])),
-    "actor_hidden_sizes": (30, 30),
-    "critic_hidden_sizes": (30, 30),
-    "state_space": np.zeros(2),
-    "action_space":np.zeros(1),
-    "max_action": 1.0
-}
-
-config_lqr = {
-    "agent_str": "LQR",
-    "g": 9.81,
-    "l": 0.5,
-    "m": 0.15,
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
+config = {
+    "model_name": "LAS_LyapunovAC_Pendulum",
     "max_action": 1.0,
-    "x_star": np.array([0.0, 0.0])
+    "beta": 0.6,
+    "dynamics_fn": pendulum_dynamics_torch,
+    "dynamics_fn_dreal": pendulum_dynamics_dreal,
+    "LQR": {
+        "agent_str": "LQR",
+        "environment": "InvertedPendulum",
+        "discrete_discounted": False,
+        "g": 9.81,
+        "m": 0.15,
+        "l": 0.5,
+        "b": 0.1,
+        "max_action": 1.0,
+        "state_space": np.zeros(2),
+        "action_space": np.zeros(1),
+    },
+    "alpha": 0.2,
+    "lr": 2e-3,
+    "batch_size": 256,
+    "num_paths_sampled": 8,
+    "norm_threshold": 5e-2,
+    "integ_threshold": 500,
+    "expl_noise": 0.1,
+    "dt": 0.003,
+    "actor_hidden_sizes": (5, 5), 
+    "critic_hidden_sizes": (20, 20),
+    "state_space": np.zeros(2), 
+    "action_space": np.zeros(1), 
+    "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
 }
 
-config_las_lyac = {
-    "agent_str": "LAS-LAC",
-    "LQR": config_lqr,
-    "LAC": config_lac,
-    "beta": 0.5,
-    "dynamics_fn": vanderpol_dynamics_torch,
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
-}
-
-
-agent = AgentFactory.create_agent(config=config_las_lyac)
-agent.load()
-
+agent = LAS_LyapunovAgent(config=config)
+agent.load("logs/LAS_LyapunovAC/run_0/", episode=3000)
 
 def combined_check(level, scale=2., eps=0.5):
-    return agent.lac_agent.trainer.check_lyapunov(level, scale, eps)
+    is_verified, ce_model = agent.trainer.check_lyapunov_with_ce(level, scale, eps)
+
+    if is_verified:
+        return None, None
+    else:
+        return ce_model, ce_model
 
 LEVEL_INIT = 0.95
 
@@ -85,7 +81,6 @@ def bisection(check_fun, c_max=0.95, tol=1e-3, it_max=40):
         else:
             hi_fail = mid
     return lo_pass
-
 
 c_star_combined = bisection(combined_check, LEVEL_INIT)
 print(f"Combined Policy Certified c* = {c_star_combined:.4f}")

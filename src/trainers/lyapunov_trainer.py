@@ -68,7 +68,6 @@ class LyapunovTrainer(Trainer):
         print('Lyapunov Trainer Initialized (Standalone LAC)!')
 
     def train(self, counter_examples: list = None):
-        # Use GPU-based sampling and vectorized trajectory simulation
         init_states = sample_in_region_torch(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
         traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
         values = values.to(dtype=torch.float32, device=self.device)
@@ -98,9 +97,8 @@ class LyapunovTrainer(Trainer):
         
         phix = torch.norm(init_states_in, p=2, dim=1) 
 
-        # changed current_fxu to fxu_detached
         resid = torch.sum(grad_Wx_in * current_fxu.detach(), dim=1) + \
-        self.alpha_zubov * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
+            self.alpha_zubov * (1 + Wx_in.squeeze()) * (1 - Wx_in.squeeze()) * phix
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
@@ -109,7 +107,7 @@ class LyapunovTrainer(Trainer):
         # Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
         Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
 
-        # 5) Enforce that on the boundary of R2, W(x) ≈ 1
+        # 5) Enforce that on the boundary of R2, W(x) \approx 1
         init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
         Wx_out = self.critic_model(init_states_out) 
         # Lb = 5.0 * torch.mean(torch.abs(Wx_out - 1.0))
@@ -175,7 +173,6 @@ class LyapunovTrainer(Trainer):
                 x = torch.where(active.unsqueeze(1), x_next, x)
                 x_hist.append(x.clone())
 
-        # Stack the history along a new time dimension: shape [B, T, state_space]
         traj = torch.stack(x_hist, dim=1)
         final_norm = torch.linalg.vector_norm(x, ord=2, dim=1)
         converged = final_norm < self.norm_threshold
@@ -183,11 +180,9 @@ class LyapunovTrainer(Trainer):
         return traj, integ_acc, converged
 
     def plot_level_set_and_trajectories(self):
-        # Create a grid covering R2 (boundary scaled by 2)
         x_min, x_max = self.lb[0]*2, self.ub[0]*2
         y_min, y_max = self.lb[1]*2, self.ub[1]*2
 
-        # Use 3000 points and 100 contour levels as in the original
         xx = np.linspace(x_min, x_max, 3000)
         yy = np.linspace(y_min, y_max, 3000)
         X, Y = np.meshgrid(xx, yy)
@@ -205,22 +200,17 @@ class LyapunovTrainer(Trainer):
         plt.title("Critic Level Set (Lyapunov Function)")
         plt.xlabel("x[0]")
         plt.ylabel("x[1]")
-        # Explicitly set axis limits to match the grid boundaries
         plt.xlim(x_min, x_max)
         plt.ylim(y_min, y_max)
 
-        # Vectorized simulation: simulate 5 trajectories in parallel
         init_states = sample_in_region_torch(5, self.lb_tensor, self.ub_tensor, self.device)
         trajs, _, _ = self.simulate_trajectories(init_states, max_steps=3000)
         trajs_np = trajs.cpu().numpy()
         
-        # Plot each trajectory
         for i in range(trajs_np.shape[0]):
             plt.plot(trajs_np[i, :, 0], trajs_np[i, :, 1], 'o-', markersize=1, linewidth=0.5, color='r')
             plt.plot(trajs_np[i, 0, 0], trajs_np[i, 0, 1], 'r+')
         
-        os.makedirs("plots", exist_ok=True)
-
         plt.gca().set_aspect('equal')
         level_set_dir = os.path.join(self.run_dir, "level_sets")
         os.makedirs(level_set_dir, exist_ok=True)
@@ -305,14 +295,14 @@ class LyapunovTrainer(Trainer):
                 Wx <= W0
             )
         )
-        r1 = d.CheckSatisfiability( condition, 0.01 )
+        r1 = d.CheckSatisfiability( condition, 0.001 )
         
         r2 = d.CheckSatisfiability(
             d.And(
                 self.on_boundary_dreal(x, scale=scale),
                 Wx <= level
             ),
-            0.01
+            0.001
         )
         print('----------')
         print(r1)
@@ -322,31 +312,20 @@ class LyapunovTrainer(Trainer):
 
     def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5):
         print(f"Verifying with c = {level:.4f} and eps = {eps:.2f}...")
-        # Get W(0) value
         W0 = self.critic_model(torch.zeros((1, self.state_dim), device=self.device)).squeeze().item()
         
-        # Define dReal variables
         x = dreal_var(self.state_dim)
         
-        # Construct dReal expressions for dynamics and Lyapunov function
         u = self.actor_model.forward_dreal(x)
         fx = self.dynamics_fn_dreal(x, u)
         Wx = self.critic_model.forward_dreal(x)[0]
         
-        # Construct Lie derivative and state norm
         lie_derivative_W = sum(fx[i] * Wx.Differentiate(x[i]) for i in range(self.state_dim))
-        x_norm = d.sqrt(sum(xi * xi for xi in x)) # Use sqrt for direct comparison with eps
+        x_norm = d.sqrt(sum(xi * xi for xi in x))
 
-        # --- Condition 1: Find a state inside the RoA that violates conditions ---
-        # This is the primary falsification query.
-        # It looks for a point where:
-        #   1. The norm is NOT insignificant (>= eps)
-        #   2. It's within the region of interest (R2)
-        #   3. The Lyapunov candidate W(x) is below the level c
-        #   4. EITHER the Lie derivative is non-negative OR W(x) is not greater than W(0)
         violation_condition = d.And(
             x_norm >= eps,
-            self.in_domain_dreal(x, scale), # Use the correct helper function
+            self.in_domain_dreal(x, scale),
             Wx <= level,
             d.Or(
                 lie_derivative_W >= 0,
@@ -358,7 +337,6 @@ class LyapunovTrainer(Trainer):
             print("FALSIFIED: Found counter-example violating Lie derivative or positivity.")
             return (False, r1)
 
-        # --- Condition 2: Check if the level set escapes the boundary of R2 ---
         boundary_condition = d.And(
             self.on_boundary_dreal(x, scale=scale),
             Wx <= level
@@ -368,6 +346,5 @@ class LyapunovTrainer(Trainer):
             print("FALSIFIED: RoA level set touches the boundary of the verified region.")
             return (False, r2)
 
-        # If both checks are UNSAT, the system is verified for this level
         print("Verification PASSED for this level")
         return (True, None)

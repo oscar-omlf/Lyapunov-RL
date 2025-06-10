@@ -9,10 +9,10 @@ from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_dreal, doub
 
 LEVEL_INIT = 0.95
 
-def bisection(check_fun, c_max=0.95, tol=1e-3, it_max=40):
+def bisection(check_fun, c_max=0.95, tol=1e-3, it_max=40, eps=0.5):
     hi_fail = c_max
     while True:
-        r1, r2 = check_fun(hi_fail, eps=0.5)
+        r1, r2 = check_fun(hi_fail, eps=eps)
         if is_unsat(r1) and is_unsat(r2):
             break
         hi_fail *= 0.5
@@ -28,7 +28,7 @@ def bisection(check_fun, c_max=0.95, tol=1e-3, it_max=40):
         if hi_fail - lo_pass < tol:
             break
         mid = 0.5 * (lo_pass + hi_fail)
-        r1, r2 = check_fun(mid, eps=0.5)
+        r1, r2 = check_fun(mid, eps=eps)
         ok = is_unsat(r1) and is_unsat(r2)
         print(f"c={mid:.5f}  ok={ok}")
         if ok:
@@ -60,31 +60,30 @@ config_lac_pendulum = {
 
 config_lqr = {
     "agent_str": "LQR",
-    'environment': 'InvertedPendulum',
-    'discrete':    False,
-    'g':           9.81,
-    'm':           0.15,
-    'l':           0.5,
-    'max_action':  1.0,
-    'state_space': np.zeros(2),
-    'action_space':np.zeros(1),
+    "environment": "InvertedPendulum",
+    "discrete_discounted": False,
+    "g": 9.81,
+    "m": 0.15,
+    "l": 0.5,
+    "b": 0.1,
+    "max_action": 1.0,
+    "state_space": np.zeros(2),
+    "action_space": np.zeros(1),
 }
-
 
 agent_lac = AgentFactory.create_agent(config=config_lac_pendulum)
 agent_lqr = AgentFactory.create_agent(config=config_lqr)
 
-agent_lac.load(file_path='./logs/LAC_CEGAR/run_5/', episode=20000)
+# agent_lac.load(file_path='./logs/LAC_CEGAR/run_4/', episode=1000)
 
-print(agent_lac.trainer._sanity_network())
-print(agent_lac.trainer._sanity_dynamics())
+agent_lac.trainer._sanity_network()
+agent_lac.trainer._sanity_dynamics()
 
-r = agent_lac.trainer.check_lyapunov_with_ce(level=LEVEL_INIT, scale=2.0, eps=0.5)
-print(r)
-exit()
+# r = agent_lac.trainer.check_lyapunov_with_ce(level=0.5, scale=2.0, eps=0.5)
+# print(r)
 
-c_star = bisection(agent_lac.trainer.check_lyapunov, LEVEL_INIT)
-print(f"\nLyAC certified c* = {c_star:.4f}")
+# c_star = bisection(agent_lac.trainer.check_lyapunov, LEVEL_INIT)
+# print(f"\nLyAC certified c* = {c_star:.4f}")
 
 alpha = 0.2
 P     = agent_lqr.P_np
@@ -110,5 +109,5 @@ def lqr_check(level, scale=2., eps=0.5, delta=1e-4):
             d.And(on_boundary(x,lb,ub,scale), W<=level), delta)
     return r1, r2
 
-# c_star = bisection(lqr_check, LEVEL_INIT)
-# print(f"\nLQR certified c* = {c_star:.4f}")
+c_star = bisection(lqr_check, LEVEL_INIT, eps=0.05)
+print(f"\nLQR certified c* = {c_star:.4f}")

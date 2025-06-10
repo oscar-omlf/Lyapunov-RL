@@ -1,12 +1,11 @@
 import os
 import numpy as np
 
-# Assume these are your existing imports
 from agents.agent_factory import AgentFactory
 from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_dreal
 from util.metrics_tracker import MetricsTracker
-
 from util.logger_utils import setup_run_directory_and_logging
+
 
 def train_lac():
     config_lac = {
@@ -56,7 +55,7 @@ def train_lac():
             agent.save(file_path=run_dir, episode=(episode + 1)) 
             logger.info(f"Model weights saved to {run_dir}")
 
-    logger.info("--- Training Finished ---")
+    logger.info("Training Finished")
 
     tracker.add_run_losses(model_name, ep_actor_losses, ep_critic_losses)
     tracker.save_top10_losses_plot(folder=run_dir)
