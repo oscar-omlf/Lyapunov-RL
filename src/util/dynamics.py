@@ -3,33 +3,6 @@ import torch
 import dreal as d
 
 
-def gym_pendulum_dynamics(xs, us):
-    """
-    Differentiable dynamics function for the pendulum.
-    Assumes xs has shape (batch, 2): [theta, theta_dot],
-    and us has shape (batch, 1).
-    Returns dx/dt with the same shape as xs.
-    """
-    theta = xs[:, 0]
-    theta_dot = xs[:, 1]
-    
-    # Constants for Gymnasium's Pendulum-v1
-    g = 10.0  # gravitational acceleration
-    m = 1.0   # mass
-    l = 1.0   # pendulum length
-    
-    # Compute angular acceleration:
-    # d(theta_dot)/dt = 3 * g / (2 * l) * sin(theta) + 3 / (m * l^2) * u
-    theta_ddot = (3 * g / (2 * l)) * torch.sin(theta) + (3.0 / (m * l**2)) * us.squeeze()
-    
-    # Derivatives:
-    dtheta = theta_dot
-    dtheta_dot = theta_ddot
-    
-    dxdt = torch.stack([dtheta, dtheta_dot], dim=1)
-    return dxdt
-
-
 def pendulum_dynamics_torch(
     state: torch.Tensor,
     action: torch.Tensor,
@@ -119,7 +92,6 @@ def compute_pendulum_reward(state: np.ndarray, action: float) -> float:
     return -cost
 
 
-
 def double_integrator_dynamics_torch(state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
     if state.ndim == 1:
         x1_dot = state[1]
@@ -129,6 +101,7 @@ def double_integrator_dynamics_torch(state: torch.Tensor, action: torch.Tensor) 
         x1_dot = state[:, 1]
         x2_dot = action[:, 0]
         return torch.stack([x1_dot, x2_dot], dim=1)
+
 
 def double_integrator_dynamics_np(state: np.ndarray, action: np.ndarray) -> np.ndarray:
     
@@ -177,7 +150,6 @@ def vanderpol_dynamics_np(state: np.ndarray, action: np.ndarray, mu: float = 1.0
     elif action.ndim == 1 and action.shape[0] == state.shape[0]:
         action = action.reshape(-1,1)
 
-
     x1 = state[:, 0]
     x2 = state[:, 1]
     u = action[:, 0]
@@ -191,7 +163,6 @@ def vanderpol_dynamics_dreal(state_vars, action_vars, mu=1.0):
     x1, x2 = state_vars[0], state_vars[1]
     u = action_vars[0]
 
-    # Dynamics
     x1_dot = x2
     x2_dot = x1 - mu * (1 - x1 * x1) * x2 + u
 
