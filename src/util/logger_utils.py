@@ -2,13 +2,20 @@ import os
 import json
 import logging
 
-def setup_run_directory_and_logging(config: dict, base_log_dir: str = "logs"):
+def setup_run_directory_and_logging(config: dict, base_log_dir: str = "logs", evaluation: bool = False):
+    
+    try:
+        env_name = config["environment"]
+    except KeyError:
+        raise KeyError("The configuration dictionary must include an 'environment' key.")
+    
     try:
         model_name = config["model_name"]
     except KeyError:
         raise KeyError("The configuration dictionary must include a 'model_name' key.")
-
-    model_dir = os.path.join(base_log_dir, model_name)
+    
+    # Create a folder at base_log_dir/env_name/model_name
+    model_dir = os.path.join(base_log_dir, env_name, model_name)    
     os.makedirs(model_dir, exist_ok=True)
 
     existing_runs = [d for d in os.listdir(model_dir) if d.startswith("run_") and os.path.isdir(os.path.join(model_dir, d))]
@@ -28,7 +35,12 @@ def setup_run_directory_and_logging(config: dict, base_log_dir: str = "logs"):
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
         
-    log_file_path = os.path.join(run_dir, "training.log")
+    if evaluation is False:
+        log_file = 'training.log'
+    else:
+        log_file = 'model_evaluation.log'
+
+    log_file_path = os.path.join(run_dir, log_file)
     file_handler = logging.FileHandler(log_file_path)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     logger.addHandler(file_handler)
@@ -37,9 +49,10 @@ def setup_run_directory_and_logging(config: dict, base_log_dir: str = "logs"):
     stream_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.addHandler(stream_handler)
     
-    logger.info("Starting Training Run")
+    logger.info("Starting Run")
     logger.info(f"Run Directory: {run_dir}")
     config_str = json.dumps(config, indent=4, default=str)
-    logger.info(f"Hyperparameters:\n{config_str}")
+    if evaluation is False:
+        logger.info(f"Hyperparameters:\n{config_str}")
     
     return run_dir, logger

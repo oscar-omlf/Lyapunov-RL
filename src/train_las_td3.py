@@ -59,10 +59,11 @@ def main():
         "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
     }
     
-    run_dir, logger = setup_run_directory_and_logging(config)
-    config["run_dir"] = run_dir
+    # run_dir, logger = setup_run_directory_and_logging(config)
+    # config["run_dir"] = run_dir
 
     agent = LAS_TD3Agent(config)
+    exit()
 
     tracker = MetricsTracker()
 
@@ -107,11 +108,6 @@ def main():
                 current_state,
                 action.item()
             )
-            if reward_float < -17.0:
-                logger.error(f"Reward is {reward_float:.2f}. Terminating episode.")
-                logger.error(f"State: {current_state}")
-                logger.error(f"Action: {action}")
-                exit()
 
             reward_np = np.array([reward_float])
 

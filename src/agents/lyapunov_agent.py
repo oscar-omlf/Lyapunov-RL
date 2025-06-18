@@ -53,13 +53,13 @@ class LyapunovAgent(AbstractAgent):
     def add_transition(self, transition: tuple) -> None:
         pass
 
-    def update(self, counter_examples: list = None):
-        loss = self.trainer.train(counter_examples=counter_examples)
+    def update(self, counter_examples: list = None, normalize_gradients: bool = False):
+        loss = self.trainer.train(counter_examples=counter_examples, normalize_gradients=normalize_gradients)
         return loss
 
     def policy(self, state):
-        s_tensor = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
-        action = self.actor_model(s_tensor)
+        state_t = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
+        action = self.actor_model(state_t)
         return action.cpu().numpy().flatten()
 
     def save(self, file_path, episode=None):

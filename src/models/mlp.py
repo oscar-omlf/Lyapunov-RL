@@ -26,15 +26,11 @@ class MLP(nn.Module):
         return self.net(x)
 
     def forward_dreal(self, x_vars: np.ndarray):
-        """
-        x_vars : np.ndarray of d.Variable/d.Expression, shape (input_dim,)
-        returns: np.ndarray of d.Expression, shape (output_dim,)
-        """
         x = x_vars
         for layer in self.net:
             if isinstance(layer, nn.Linear):
-                W = layer.weight.detach().cpu().numpy()
-                b = layer.bias.detach().cpu().numpy()
+                W = layer.weight.detach().cpu().numpy().astype(object)
+                b = layer.bias.detach().cpu().numpy().astype(object)
                 x = W @ x + b
             elif isinstance(layer, nn.Tanh):
                 x = dreal_elementwise(x, d.tanh)

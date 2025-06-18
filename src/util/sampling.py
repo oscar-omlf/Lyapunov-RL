@@ -65,28 +65,35 @@ def sample_out_of_region_torch(num_samples: int, lb: torch.Tensor, ub: torch.Ten
     return x
 
 
-def sample_from_ellipsoid(c, Nv, x_star, L_cholesky, state_dim):
-    if c <= 0:
-        return np.array([x_star])
+def sample_in_lqr_ellipsoid_torch(
+    num_samples: int, 
+    c_star: float,
+    L_inv: torch.Tensor,
+    device: str
+) -> torch.Tensor:
+    state_dim = L_inv.shape[0]
+    L_inv = L_inv.to(device)
+
+    z = torch.randn(num_samples, state_dim, device=device)
     
-    Z = np.random.randn(Nv, state_dim)
-
-    # Transoform using Cholesky decomposition P = L L^T
-    # We need inv(L^T) * Z, equivalent to solving L^T * Y = Z for Y
-    # Y = scipy.linalg.solve_triangular(self.L_cholesky.T, Z.T, lower=False).T
-
-    try:
-        Y = scipy.linalg.solve_triangular(L_cholesky.T, Z.T, lower=False).T
-    except np.linalg.LinAlgError:
-        print("Error solving traingular system during sampling. Check Cholesky decomposition.")
-        return np.array([x_star] * Nv)
+    z_norm = z / torch.linalg.vector_norm(z, ord=2, dim=1, keepdim=True)
     
-    norms_z_squares = np.sum(Z**2, axis=1)
-    norms_z_squares[norms_z_squares == 0] = 1e-6
+    u = torch.rand(num_samples, 1, device=device)
+    r = u.pow(1.0 / state_dim)
+    
+    points_in_unit_sphere = z_norm * r
+    points_in_unit_ellipsoid = points_in_unit_sphere @ L_inv
+    
+    return np.sqrt(c_star) * points_in_unit_ellipsoid
 
-    Y_normalized = Y / np.sqrt(norms_z_squares)[:, np.newaxis]
 
-    Y_scaled = Y_normalized * np.sqrt(c)
-
-    X_samples = Y_scaled + x_star
-    return X_samples
+def sample_on_circle_boundary_torch(
+    num_samples: int, 
+    state_dim: int,
+    r2_radius: float, 
+    device: str
+) -> torch.Tensor:
+    z = torch.randn(num_samples, state_dim, device=device)
+    z_norm = z / torch.linalg.vector_norm(z, ord=2, dim=1, keepdim=True)
+    
+    return z_norm * r2_radius

@@ -38,7 +38,7 @@ def analyze_blending_values():
 
     config = {
         "max_action": MAX_ACTION_VAL,
-        "beta": 0.6,
+        "beta": 0.8,
         "dynamics_fn_dreal": pendulum_dynamics_dreal,
 
         "LQR": {
@@ -70,6 +70,7 @@ def analyze_blending_values():
         "state_space": np.zeros(2),
         "action_space": np.zeros(1),
         "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
+        "c_star": 1.1982,
     }
 
     print("Initializing agent and estimating c*...")

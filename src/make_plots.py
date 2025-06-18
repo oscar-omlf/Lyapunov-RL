@@ -14,6 +14,7 @@ L_POLE = 0.5
 M_BALL = 0.15
 B_POLE = 0.1
 MAX_ACTION = 1.0
+DT = 0.003
 
 config_lac_pendulum = {
     "agent_str": "Lyapunov-AC",
@@ -22,17 +23,19 @@ config_lac_pendulum = {
     "lr": 2e-3,
     "dynamics_fn": pendulum_dynamics_torch,
     "dynamics_fn_dreal": pendulum_dynamics_dreal,
-    "batch_size": 64,
+    "batch_size": 128,
     "num_paths_sampled": 8,
-    "dt": 0.003,
+    "dt": DT,
     "norm_threshold": 5e-2,
-    "integ_threshold": 150,
+    "integ_threshold": 500,
     "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
-    "actor_hidden_sizes": (5, 5),
+    "actor_hidden_sizes": (5, 5), 
     "critic_hidden_sizes": (20, 20),
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
-    "max_action": MAX_ACTION
+    "state_space": np.zeros(2), 
+    "action_space": np.zeros(1), 
+    "max_action": 1.0,
+    # "P": P,
+    # "c_star": c_star_lqr
 }
 
 
@@ -40,7 +43,8 @@ config_lqr_pendulum = {
     "agent_str": "LQR",
     "environment": "InvertedPendulum",
     "discrete_discounted": False,
-    "dt": 0.03,
+    "gamma": 0.99,
+    "dt": 0.003,
     "g": G,
     "m": M_BALL,
     "l": L_POLE,
@@ -49,6 +53,24 @@ config_lqr_pendulum = {
     "state_space": np.zeros(2),
     "action_space": np.zeros(1),
 }
+
+
+config_lqr_vanderpol = {
+    "agent_str": "LQR",
+    "environment": "VanDerPol",
+    "discrete_discounted": False,
+    "gamma": 0.99,
+    "dt": 0.01,
+    "mu": 1.0,
+    "max_action": 1.0,
+    "R": 0.1 * np.eye(1),
+    "state_space": np.zeros(2),
+    "action_space": np.zeros(1),
+}
+
+
+CFG_LAC = config_lac_pendulum
+CFG_LQR = config_lqr_vanderpol
 
 
 def torch_to_np(x_tensor: torch.Tensor) -> np.ndarray:
@@ -107,15 +129,15 @@ def main():
     device_name = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Using device: {device_name}")
 
-    # --- Agent Initialization ---
     print("Initializing Lyapunov-AC Agent...")
-    lac_agent = LyapunovAgent(config=config_lac_pendulum)
-    lac_agent.load(file_path='logs/LAC_CEGAR/run_4/', episode=1000)
+    lac_agent = LyapunovAgent(config=CFG_LAC)
+    lac_agent.load(file_path='best_models/LAC/', episode=0)
     print("Lyapunov-AC Agent loaded successfully.")
 
     print("Initializing LQR Agent...")
-    lqr_agent = LQRAgent(config=config_lqr_pendulum)
+    lqr_agent = LQRAgent(config=CFG_LQR)
     P_lqr_np = lqr_agent.P_np
+    alpha = CFG_LAC["alpha"]
 
     # Grid and Evaluation
     angle_plt_range = np.linspace(-math.pi, math.pi, 150)
@@ -130,12 +152,12 @@ def main():
         W_flat_torch = lac_agent.critic_model(states_flat_torch)
         W_grid_np = torch_to_np(W_flat_torch.squeeze()).reshape(X_grid_np.shape)
 
-    # Evaluate LQR Lyapunov Function V(x) = (x-x*)^T P (x-x*)
+    # Evaluate LQR Lyapunov Function V(x) and the transformed W(x)
     x_star_lqr_np = lqr_agent.x_star_np
     delta_x_flat = states_flat_np - x_star_lqr_np
     V_lqr_flat_np = np.sum((delta_x_flat @ P_lqr_np) * delta_x_flat, axis=1)
     V_lqr_grid_np = V_lqr_flat_np.reshape(X_grid_np.shape)
-
+    
     # 3D Plots
     print("Generating 3D plots...")
     fig_3d_lac, ax_3d_lac = plot_lyapunov_3d(X_grid_np, Y_grid_np, W_grid_np, 'LAC Learned Zubov Function $W_{learned}(x)$', '$W_{learned}(x)$')
@@ -157,20 +179,22 @@ def main():
     plot_streamlines(ax_2d, X_flow_np, Y_flow_np, lac_agent.actor_model, device_name, pendulum_dynamics_torch)
 
     # Contour for LQR V(x)
-    lqr_contour_val = 1.1522
-    print(f"Plotting LQR certified c* = {lqr_contour_val:.4f}")
-    ax_2d.contour(X_grid_np, Y_grid_np, V_lqr_grid_np, levels=[lqr_contour_val], linewidths=2, colors='magenta', linestyles='--')
+    # lqr_v_contour_val = 1.1982
+    lqr_v_contour_val = 3.9990
+    print(f"Plotting LQR V(x) certified c* = {lqr_v_contour_val:.4f}")
+    ax_2d.contour(X_grid_np, Y_grid_np, V_lqr_grid_np, levels=[lqr_v_contour_val], linewidths=2, colors='magenta', linestyles='--')
 
     # Contour for LAC W(x)
-    lac_contour_val = 0.8183
+    lac_contour_val = 0.9593
     ax_2d.contour(X_grid_np, Y_grid_np, W_grid_np, levels=[lac_contour_val], linewidths=2, colors='red')
 
     ax_2d.set_title('Regions of Attraction - Inverted Pendulum')
     ax_2d.set_xlabel('Angle $\Theta$ (rad)')
     ax_2d.set_ylabel('Angular Velocity $\dot{\Theta}$ (rad/s)')
     ax_2d.grid(True, linestyle=':', alpha=0.6)
+    
     legend_handles = [
-        plt.Line2D([0], [0], color='magenta', linestyle='--', label=f'LQR $V(x) \\leq {lqr_contour_val:.2f}$'),
+        plt.Line2D([0], [0], color='magenta', linestyle='--', label=f'LQR $V(x) \\leq {lqr_v_contour_val:.2f}$'),
         plt.Line2D([0], [0], color='red', label=f'LAC $W(x) \\leq {lac_contour_val:.2f}$')
     ]
     ax_2d.legend(handles=legend_handles, loc='upper right')

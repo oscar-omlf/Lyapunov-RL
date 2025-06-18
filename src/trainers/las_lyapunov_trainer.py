@@ -8,6 +8,7 @@ import dreal as d
 from agents.abstract_agent import AbstractAgent
 from trainers.abstract_trainer import Trainer
 from util.sampling import sample_in_region_torch, sample_out_of_region_torch
+from util.sampling import sample_in_lqr_ellipsoid_torch
 from util.rk4_step import rk4_step
 from util.dreal import dreal_var, in_box, on_boundary, is_unsat
 
@@ -57,8 +58,9 @@ class LAS_LyapunovAC_Trainer(Trainer):
 
         print('Lyapunov Trainer Initialized (Dual-Policy Lyapunov AC)!')
 
-    def train(self, counter_examples: list = None):
+    def train(self, counter_examples: list = None, normalize_gradients: bool = False):
         init_states = sample_in_region_torch(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
+        # init_states = sample_in_lqr_ellipsoid_torch(self.num_paths_sampled, self.agent.c_star, self.agent.L_inv, self.device)
         traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
         values = values.to(dtype=torch.float32, device=self.device)
 
@@ -76,10 +78,12 @@ class LAS_LyapunovAC_Trainer(Trainer):
         if counter_examples is not None and len(counter_examples) > 0:
             ce_tensor = torch.as_tensor(counter_examples, dtype=torch.float32, device=self.device)
             random_samples = sample_in_region_torch(self.batch_size - len(counter_examples), self.lb_tensor, self.ub_tensor, self.device)
+            # random_samples = sample_in_lqr_ellipsoid_torch(self.batch_size - len(counter_examples), self.agent.c_star, self.agent.L_inv, self.device)
             init_states_in = torch.cat([ce_tensor, random_samples], dim=0)
         else:
             init_states_in = sample_in_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
-        
+            # init_states_in = sample_in_lqr_ellipsoid_torch(self.batch_size, self.agent.c_star, self.agent.L_inv, self.device)
+
         init_states_in.requires_grad_(True)
         Wx_in = self.agent.get_composite_W_value(init_states_in)
 
@@ -101,11 +105,17 @@ class LAS_LyapunovAC_Trainer(Trainer):
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
-        Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
+        if normalize_gradients is True:
+            grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
+            unit_grad = grad_Wx_in / (grad_norm + 1e-8)
+            Lc = 1.0 * torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
+        else:
+            Lc = 1.0 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) \approx 1
         init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
         Wx_out = self.agent.get_composite_W_value(init_states_out)
+        # Wx_out = self.agent.critic_model(init_states_out)
         Lb = 5.0 * F.l1_loss(Wx_out, torch.ones_like(Wx_out).to(self.device))
 
         actor_loss = Lc
@@ -201,6 +211,7 @@ class LAS_LyapunovAC_Trainer(Trainer):
         plt.ylim(y_min, y_max)
 
         init_states = sample_in_region_torch(5, self.lb_tensor, self.ub_tensor, self.device)
+        # init_states = sample_in_lqr_ellipsoid_torch(5, self.agent.c_star, self.agent.L_inv, self.device)
         trajs, _, _ = self.simulate_trajectories(init_states, max_steps=3000)
         trajs_np = trajs.cpu().numpy()
         
@@ -240,7 +251,7 @@ class LAS_LyapunovAC_Trainer(Trainer):
         )
         return d.And( condition1, condition2 )
 
-    def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5):
+    def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5, delta=1e-4):
         """
         Checks the Lyapunov conditions for the FULL COMPOSITE agent.
         This "translates" the original checker to the dual-policy framework.
@@ -302,7 +313,7 @@ class LAS_LyapunovAC_Trainer(Trainer):
                 Wx <= W0
             )
         )
-        r1 = d.CheckSatisfiability(violation_condition, 0.001)
+        r1 = d.CheckSatisfiability(violation_condition, delta)
         if r1:
             print("FALSIFIED: Found counter-example violating Lie derivative or positivity.")
             return (False, r1)
@@ -311,7 +322,7 @@ class LAS_LyapunovAC_Trainer(Trainer):
             self.on_boundary_dreal(x, scale=scale),
             Wx <= level
         )
-        r2 = d.CheckSatisfiability(boundary_condition, 0.001)
+        r2 = d.CheckSatisfiability(boundary_condition, delta)
         if r2:
             print("FALSIFIED: Composite RoA level set touches the boundary of the verified region.")
             return (False, r2)
