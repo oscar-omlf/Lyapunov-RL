@@ -32,6 +32,9 @@ class LAS_LyapunovAgent(DualPolicyAgent):
         
         self.run_dir = config.get("run_dir")
 
+        L_inv = torch.linalg.inv(torch.as_tensor(self.lqr_agent.P_np, dtype=torch.float32))
+        self.L_inv = L_inv
+
         self.trainer = LAS_LyapunovAC_Trainer(
             agent=self,
             alpha_zubov=self.alpha_zubov,
@@ -73,8 +76,8 @@ class LAS_LyapunovAgent(DualPolicyAgent):
     def add_transition(self, transition: tuple) -> None:
         pass
 
-    def update(self, counter_examples: list = None):
-        loss = self.trainer.train(counter_examples=counter_examples)
+    def update(self, counter_examples: list = None, normalize_gradients: bool = False):
+        loss = self.trainer.train(counter_examples=counter_examples, normalize_gradients=normalize_gradients)
         return loss
     
     def save(self, file_path, episode=None):

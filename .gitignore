@@ -185,3 +185,6 @@ saved_models
 *.sh
 *.zip
 
+*.png
+*.def
+*.sif

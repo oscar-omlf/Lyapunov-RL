@@ -11,10 +11,12 @@ from typing import Union
 from agents.abstract_agent import AbstractAgent
 from trainers.abstract_trainer import Trainer
 from util.sampling import sample_in_region_torch, sample_out_of_region_torch
+from util.sampling import sample_in_lqr_ellipsoid_torch, sample_on_circle_boundary_torch
 from util.rk4_step import rk4_step
 
 import dreal as d
-from util.dreal import dreal_var, in_box, on_boundary, is_unsat
+from util.dreal import dreal_var
+from util.dreal import dreal_in_circle, dreal_on_circle_boundary
 
 
 class LyapunovTrainer(Trainer):
@@ -67,8 +69,9 @@ class LyapunovTrainer(Trainer):
 
         print('Lyapunov Trainer Initialized (Standalone LAC)!')
 
-    def train(self, counter_examples: list = None):
+    def train(self, counter_examples: list = None, normalize_gradients: bool = False):
         init_states = sample_in_region_torch(self.num_paths_sampled, self.lb_tensor, self.ub_tensor, self.device)
+        # init_states = sample_in_lqr_ellipsoid_torch(self.num_paths_sampled, self.c_star, self.L_inv, self.device)
         traj, values, _ = self.simulate_trajectories(init_states, max_steps=3000)
         values = values.to(dtype=torch.float32, device=self.device)
 
@@ -86,9 +89,11 @@ class LyapunovTrainer(Trainer):
         if counter_examples is not None and len(counter_examples) > 0:
             ce_tensor = torch.as_tensor(counter_examples, dtype=torch.float32, device=self.device)
             random_samples = sample_in_region_torch(self.batch_size - len(counter_examples), self.lb_tensor, self.ub_tensor, self.device)
+            # random_samples = sample_in_lqr_ellipsoid_torch(self.batch_size - len(counter_examples), self.c_star, self.L_inv, self.device)
             init_states_in = torch.cat([ce_tensor, random_samples], dim=0)
         else:
             init_states_in = sample_in_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, self.device)
+            # init_states_in = sample_in_lqr_ellipsoid_torch(self.batch_size, self.c_star, self.L_inv, self.device)
 
         Wx_in, grad_Wx_in = self.critic_model.forward_with_grad(init_states_in)
 
@@ -102,18 +107,21 @@ class LyapunovTrainer(Trainer):
         Lp = torch.mean(torch.square(resid))
 
         # 4) Encourage control actions that decrease the Lyapunov function
-        # grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
-        # unit_grad = grad_Wx_in / (grad_norm + 1e-8)
-        # Lc = 0.5 *torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
-        Lc = 0.5 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
+        if normalize_gradients is True:
+            grad_norm = torch.linalg.vector_norm(grad_Wx_in, ord=2, dim=1, keepdim=True)
+            unit_grad = grad_Wx_in / (grad_norm + 1e-8)
+            Lc = 1.0 * torch.mean(torch.sum(unit_grad.detach() * current_fxu, dim=1))
+        else:
+            Lc = 1.0 * torch.mean(torch.sum(grad_Wx_in.detach() * current_fxu, dim=1))
 
         # 5) Enforce that on the boundary of R2, W(x) \approx 1
         init_states_out = sample_out_of_region_torch(self.batch_size, self.lb_tensor, self.ub_tensor, scale=2, device=self.device)
+        # init_states_out = sample_on_circle_boundary_torch(self.batch_size, self.state_dim, self.r2_radius, self.device)
         Wx_out = self.critic_model(init_states_out) 
         # Lb = 5.0 * torch.mean(torch.abs(Wx_out - 1.0))
         Lb = 5.0 * F.l1_loss(Wx_out, torch.ones_like(Wx_out).to(self.device))
 
-        actor_loss = Lc
+        actor_loss = Lc # + 0.2 * Lp
         critic_loss = Lz + Lr + Lp + Lb
 
         total_loss = 0.5 * actor_loss + critic_loss
@@ -204,6 +212,7 @@ class LyapunovTrainer(Trainer):
         plt.ylim(y_min, y_max)
 
         init_states = sample_in_region_torch(5, self.lb_tensor, self.ub_tensor, self.device)
+        # init_states = sample_in_lqr_ellipsoid_torch(5, self.c_star, self.L_inv, self.device)
         trajs, _, _ = self.simulate_trajectories(init_states, max_steps=3000)
         trajs_np = trajs.cpu().numpy()
         
@@ -289,17 +298,19 @@ class LyapunovTrainer(Trainer):
         condition = d.And(
             x_norm >= eps,
             self.in_domain_dreal(x, scale),
+            # dreal_in_circle(x, self.r2_radius),
             Wx <= level,
             d.Or(
                 lie_derivative_W >= 0,
                 Wx <= W0
             )
         )
-        r1 = d.CheckSatisfiability( condition, 0.001 )
+        r1 = d.CheckSatisfiability(condition, 0.001)
         
         r2 = d.CheckSatisfiability(
             d.And(
                 self.on_boundary_dreal(x, scale=scale),
+                # dreal_on_circle_boundary(x, self.r2_radius),
                 Wx <= level
             ),
             0.001
@@ -310,7 +321,7 @@ class LyapunovTrainer(Trainer):
         print('----------')
         return r1, r2
 
-    def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5):
+    def check_lyapunov_with_ce(self, level=0.9, scale=2., eps=0.5, delta=1e-4):
         print(f"Verifying with c = {level:.4f} and eps = {eps:.2f}...")
         W0 = self.critic_model(torch.zeros((1, self.state_dim), device=self.device)).squeeze().item()
         
@@ -326,22 +337,24 @@ class LyapunovTrainer(Trainer):
         violation_condition = d.And(
             x_norm >= eps,
             self.in_domain_dreal(x, scale),
+            # dreal_in_circle(x, self.r2_radius),
             Wx <= level,
             d.Or(
                 lie_derivative_W >= 0,
                 Wx <= W0
             )
         )
-        r1 = d.CheckSatisfiability(violation_condition, 0.001)
+        r1 = d.CheckSatisfiability(violation_condition, delta)
         if r1:
             print("FALSIFIED: Found counter-example violating Lie derivative or positivity.")
             return (False, r1)
 
         boundary_condition = d.And(
             self.on_boundary_dreal(x, scale=scale),
+            # dreal_on_circle_boundary(x, self.r2_radius),
             Wx <= level
         )
-        r2 = d.CheckSatisfiability(boundary_condition, 0.001)
+        r2 = d.CheckSatisfiability(boundary_condition, delta)
         if r2:
             print("FALSIFIED: RoA level set touches the boundary of the verified region.")
             return (False, r2)

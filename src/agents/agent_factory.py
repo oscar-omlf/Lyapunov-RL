@@ -33,7 +33,7 @@ class AgentFactory:
                 return LyapunovAgent(config)
             elif agent_str == 'TD3':
                  return TD3Agent(config)
-            elif agent_str == 'LAS-LAC':
+            elif agent_str == 'LDP':
                  return LAS_LyapunovAgent(config)
             else:
                 raise ValueError(f"Unknown agent type: {agent_str}")

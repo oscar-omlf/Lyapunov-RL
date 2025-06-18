@@ -42,6 +42,8 @@ class LQRAgent(AbstractAgent):
 
         elif self.environment == "VanDerPol":
             self.mu = config.get("mu", 1.0)
+            if self.mu != 1.0:
+                print(f"Warning: mu = {self.mu} != 1.0. This is not supported by the Lyapunov-AC algorithm.")
 
             A_c = np.array([
                 [0.0, 1.0],
@@ -63,19 +65,21 @@ class LQRAgent(AbstractAgent):
         if self.discrete_discounted:
             A_d, B_d = self.discretize_dynamics(A_c, B_c, dt=self.dt)
 
+            Qd = self.dt * Q
+            Rd = self.dt * R
+
             # Section 4.2 of the paper
-            P_bar = self.riccati_solver.solve_discrete_are(A_d, B_d, Q, R)
+            P_bar = self.riccati_solver.solve_discrete_are(A_d, B_d, Qd, Rd)
 
-            Q_gamma = self.gamma * Q + (1 - self.gamma) * P_bar
-            R_gamma = self.gamma * R
+            Q_gamma = self.gamma * Qd + (1 - self.gamma) * P_bar
+            R_gamma = self.gamma * Rd
 
-            P = self.riccati_solver.solve_discounted_dare(A_d, B_d, Q_gamma, R_gamma, self.gamma)
-            
-            try:
-                inv_term = np.linalg.inv(R_gamma + self.gamma * B_d.T @ P @ B_d)
-            except np.linalg.LinAlgError:
-                raise np.linalg.LinAlgError("Matrix R is singular.")
-            
+            P_disc = self.riccati_solver.solve_discounted_dare(A_d, B_d, Q_gamma, R_gamma, self.gamma)
+            assert np.allclose(P_disc, P_bar, rtol=1e-6, atol=1e-8)
+
+            P = P_bar.copy()
+            inv_term =np.linalg.inv(R_gamma + self.gamma * B_d.T @ P @ B_d)
+
             K = self.gamma * inv_term @ (B_d.T @ P @ A_d)
 
             A, B = A_d, B_d
@@ -114,13 +118,6 @@ class LQRAgent(AbstractAgent):
     def discretize_dynamics(self, A_c: np.ndarray, B_c: np.ndarray, dt: float):
         n = A_c.shape[0]
         m = B_c.shape[1]
-
-        # Form the augmented matrix for ZOH computation
-        # M = [[A_c, B_c],
-        #      [0_mxn, 0_mxm]]
-        # Md = expm(M * dt)
-        # A_d = Md[:n, :n]
-        # B_d = Md[:n, n:]
 
         # Ensure B_c is 2D
         if B_c.ndim == 1:
@@ -162,9 +159,7 @@ class LQRAgent(AbstractAgent):
     def lyapunov_value(self, state) -> torch.Tensor:
         """Computes V(x) = (x - x*)^T P (x - x*) in torch."""
         x = state.float()
-
-        x_star = torch.from_numpy(self.x_star.astype(np.float32)).to(device=self.device)
-        delta = x - x_star
+        delta = x - self.x_star
 
         V = (delta @ self.P) * delta
         V = V.sum(dim=-1)
@@ -179,7 +174,7 @@ class LQRAgent(AbstractAgent):
     def lyapunov_value_np(self, state):
         """Computes V(x) = (x - x*)^T P (x - x*)."""
         x = np.array(state, dtype=np.float64).flatten()
-        delta_x = x - self.x_star
+        delta_x = x - self.x_star_np
         v_x = float(delta_x @ self.P_np @ delta_x)
 
         if math.isnan(v_x):

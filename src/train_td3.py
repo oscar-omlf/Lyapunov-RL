@@ -4,44 +4,76 @@ import os
 
 from util.dynamics import (
     pendulum_dynamics_np,
-    compute_pendulum_reward
+    compute_pendulum_reward,
+    vanderpol_dynamics_np,
+    compute_vanderpol_reward
 )
 from util.rk4_step import rk4_step
 from agents.td3_agent import TD3Agent
 from util.metrics_tracker import MetricsTracker
 
 
+DT = 0.03
+PENDULUM_G = 9.81
+PENDULUM_M = 0.15
+PENDULUM_L = 0.5
+MAX_ACTION_VAL = 1.0
+
+config_td3_pendulum = {
+    "agent_str": "TD3",
+    "environment": "InvertedPendulum",
+    "actor_lr": 3e-4,
+    "critic_lr": 3e-4,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "batch_size": 256,
+    "policy_freq": 2,
+    "policy_noise": 0.2,
+    "noise_clip": 0.5,
+    "start_episodes": 125,
+    "expl_noise": 0.1,
+    "actor_hidden_sizes": (256, 256),
+    "critic_hidden_sizes": (256, 256),
+    "state_space": np.zeros(2),
+    "action_space": np.zeros(1),
+    "max_action": MAX_ACTION_VAL,
+    "dynamics_fn": pendulum_dynamics_np,
+    "rewards_fn": compute_pendulum_reward,
+}
+
+config_td3_vanderpol = {
+    "agent_str": "TD3",
+    "environment": "VanDerPol",
+    "actor_lr": 3e-4,
+    "critic_lr": 3e-4,
+    "gamma": 0.95,
+    "tau": 0.005,
+    "batch_size": 256,
+    "policy_freq": 3,
+    "policy_noise": 0.2,
+    "noise_clip": 0.5,
+    "start_episodes": 200,
+    "expl_noise": 0.20,
+    "actor_hidden_sizes": (256, 256),
+    "critic_hidden_sizes": (256, 256),
+    "state_space": np.zeros(2),
+    "action_space": np.zeros(1),
+    "max_action": MAX_ACTION_VAL,
+    "dynamics_fn": vanderpol_dynamics_np,
+    "rewards_fn": compute_vanderpol_reward,
+}
+
+CFG = config_td3_pendulum
+
+dynamics_fn = CFG["dynamics_fn"]
+rewards_fn = CFG["rewards_fn"]
+
 def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
-
-    DT = 0.03
-    PENDULUM_G = 9.81
-    PENDULUM_M = 0.15
-    PENDULUM_L = 0.5
-    MAX_ACTION_VAL = 1.0
-
-    config = {
-        "agent_str": "TD3",
-        "actor_lr": 3e-4,
-        "critic_lr": 3e-4,
-        "gamma": 0.99,
-        "tau": 0.005,
-        "batch_size": 256,
-        "policy_freq": 2,
-        "policy_noise": 0.2,
-        "noise_clip": 0.5,
-        "start_episodes": 125,
-        "expl_noise": 0.1,
-        "actor_hidden_sizes": (256, 256),
-        "critic_hidden_sizes": (256, 256),
-        "state_space": np.zeros(2),
-        "action_space": np.zeros(1),
-        "max_action": MAX_ACTION_VAL,
-    }
     
-    agent = TD3Agent(config)
-    agent_id_str = "TD3_Pendulum" 
+    agent = TD3Agent(CFG)
+    agent_id_str = CFG["agent_str"] + "_" + CFG["environment"]
 
     tracker = MetricsTracker()
 
@@ -61,8 +93,8 @@ def main():
         ep_critic_losses = []
 
         current_state_np = np.array([
-                    np.random.uniform(-np.pi, np.pi),   
-                    np.random.uniform(-8.0, 8.0)
+                    np.random.uniform(-4, 4),   
+                    np.random.uniform(-4.0, 4.0) 
                 ])
         current_state_torch = torch.as_tensor(current_state_np, dtype=torch.float32, device=DEVICE)
         
@@ -79,23 +111,14 @@ def main():
                 action_np = agent.policy(current_state_np)
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
 
-            next_state_np = rk4_step(pendulum_dynamics_np, current_state_np, action_np, DT).squeeze()
-
-            next_state_np[0] = (next_state_np[0] + np.pi) % (2 * np.pi) - np.pi
-            next_state_np[1] = np.clip(next_state_np[1], -8.0, 8.0) 
+            next_state_np = rk4_step(dynamics_fn, current_state_np, action_np, DT).squeeze()
 
             next_state_torch = torch.as_tensor(next_state_np, dtype=torch.float32, device=DEVICE)
 
-            reward_float = compute_pendulum_reward(
+            reward_float = rewards_fn(
                 current_state_np,
                 action_np.item()
             )
-            if reward_float < -17.0:
-                print(current_state_np)
-                print(action_np)
-                print(f"Reward is {reward_float:.2f}. Terminating episode.")
-                exit()
-
             reward_torch = torch.as_tensor([reward_float], dtype=torch.float32, device=DEVICE)
             
             episode_reward += reward_float
@@ -151,6 +174,7 @@ def main():
 
     print("Training finished.")
     
+    agent.save(file_path="best_models/TD3/")
     tracker.add_run_returns(agent_id_str, total_returns)
     tracker.add_run_losses(agent_id_str, total_actor_losses, total_critic_losses)
     tracker.save_top10_plots()

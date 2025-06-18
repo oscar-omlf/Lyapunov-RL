@@ -38,8 +38,13 @@ class DualPolicyAgent(AbstractAgent):
         self.max_action = config.get("max_action")
         
         # Offline estimation of DoA
-        self.c_star = self._estimate_domain_of_attraction(check_fn=self.lqr_check)
-        print(f"Domain of Attraction estimation complete. Estimated c* = {self.c_star:.4f}")
+        c_star = config.get("c_star")
+        if c_star is None:
+            c_star = self._estimate_domain_of_attraction(check_fn=self.lqr_check)
+            print(f"Domain of Attraction estimation complete. Estimated c* = {self.c_star:.4f}")
+        else:
+            print(f"Using c* = {c_star:.4f} from config.")
+        self.c_star = c_star
 
         self.blending_function = BlendingFunction(self.lqr_agent, beta_h=self.beta, c_star=self.c_star, device=self.device)
         self.riccati_solver = RiccatiSolver()
@@ -104,7 +109,7 @@ class DualPolicyAgent(AbstractAgent):
         raise NotImplementedError("Subclasses must implement this method.")
 
 
-    def lqr_check_discrete(self, level, scale=2., eps=0.5, delta=1e-4):
+    def lqr_check_discrete(self, level, scale=2., eps=0.5, delta=1e-3):
         n = self.lqr_agent.P_np.shape[0]
         x = dreal_var(n)
 
@@ -112,29 +117,34 @@ class DualPolicyAgent(AbstractAgent):
         V = sum(x[i] * sum(P[i, j] * x[j] for j in range(n)) for i in range(n))
 
         K = self.lqr_agent.K_np
-        u = [-sum(K[i, j] * x[j] for j in range(n)) for i in range(K.shape[0])]
+        m = K.shape[0]
+        u_lqr = [-sum(K[i, j] * x[j] for j in range(n)) for i in range(m)]
 
-        x_next = self.dynamics_fn_dreal(x, u)
-        V_next = sum(x_next[i] * sum(P[i, j] * x_next[j] for j in range(n)) for i in range(n))
-        
-        lyapunov_violation = (V_next - V >= 0)
+        u_clamped = [
+            d.if_then_else(u_lqr[i] > self.max_action, self.max_action,
+                d.if_then_else(u_lqr[i] < -self.max_action, -self.max_action, u_lqr[i]))
+            for i in range(m)
+        ]
+
+        fxu = self.dynamics_fn_dreal(x, u_clamped)
+
+        lie_derivative = sum(fxu[i] * V.Differentiate(x[i]) for i in range(n))
+
         x_norm_sq = sum(xi**2 for xi in x)
 
-        r1 = d.CheckSatisfiability(
-            d.And(
-                V <= level,
-                x_norm_sq >= eps**2,
-                in_box(x, self.lb, self.ub, scale),
-                lyapunov_violation
-            ),
-            delta)
+        violation_condition = d.And(
+            V <= level,
+            x_norm_sq >= eps**2,
+            in_box(x, self.lb, self.ub, scale),
+            lie_derivative >= 0
+        )
+        r1 = d.CheckSatisfiability(violation_condition, delta)
 
-        r2 = d.CheckSatisfiability(
-            d.And(
-                on_boundary(x, self.lb, self.ub, scale),
-                V <= level
-            ),
-            delta)
+        boundary_condition = d.And(
+            on_boundary(x, self.lb, self.ub, scale),
+            V <= level
+        )
+        r2 = d.CheckSatisfiability(boundary_condition, delta)
 
         return r1, r2
 
@@ -177,7 +187,7 @@ class DualPolicyAgent(AbstractAgent):
 
         return r1, r2
     
-    def lqr_check(self, level, scale=2., eps=0.5, delta=1e-4, alpha=0.2):
+    def lqr_check(self, level, scale=2., eps=0.5, delta=1e-4):
         if self.lqr_agent.discrete_discounted:
             return self.lqr_check_discrete(level, scale, eps, delta)
         else:
