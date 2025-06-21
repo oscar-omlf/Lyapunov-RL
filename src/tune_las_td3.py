@@ -27,6 +27,7 @@ def make_base_config() -> dict:
 
     config = {
         "model_name": "LAS_TD3_BetaSearch",
+        "environment": "InvertedPendulum",
         "max_action": MAX_ACTION_VAL,
         "dynamics_fn_dreal": pendulum_dynamics_dreal,
         "LQR": {

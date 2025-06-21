@@ -21,7 +21,7 @@ config_ldp_pendulum = {
     "model_name": "LDP",
     "environment": "InvertedPendulum",
     "max_action": 1.0,
-    "beta": 0.8,
+    "beta": 0.9,
     "dynamics_fn_dreal": pendulum_dynamics_dreal,
     "dynamics_fn": pendulum_dynamics_torch,
     "LQR": {
@@ -165,6 +165,7 @@ config_lqr_pendulum = {
     "l": L_POLE,
     "b": B_POLE,
     "max_action": MAX_ACTION,
+    "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
     "state_space": np.zeros(2),
     "action_space": np.zeros(1),
 }

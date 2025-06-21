@@ -3,12 +3,10 @@ from pathlib import Path
 
 import scipy.stats as stats
 
-# ---------------------------- CONFIG -------------------------------- #
-RUN_NUMBER = 5                       # <-- change this to the run you want
+RUN_NUMBER = 6
 LOG_ROOT   = Path("logs/InvertedPendulum/EVALUATION")
 AGENTS     = ["LAC", "LDP", "TD3", "LQR"]
-ALPHA      = 0.05                    # significance level for Holm correction
-# -------------------------------------------------------------------- #
+ALPHA      = 0.05
 
 run_dir = LOG_ROOT / f"run_{RUN_NUMBER}"
 if not run_dir.exists():
