@@ -14,7 +14,7 @@ from config import config_ldp_pendulum, config_ldp_vanderpol
 CFG = config_ldp_pendulum
 normalize_gradients = CFG["normalize_gradients"]
 
-CFG["beta"] = 0.9
+CFG["beta"] = 0.1
 CFG["model_name"] = f"LDP-{CFG['beta']}"
 
 R1_LB, R1_UB = CFG["r1_bounds"]

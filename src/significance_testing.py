@@ -3,17 +3,21 @@ from pathlib import Path
 
 import scipy.stats as stats
 
-RUN_NUMBER = 6
+RUN_NUMBER = 7
 LOG_ROOT   = Path("logs/InvertedPendulum/EVALUATION")
-AGENTS     = ["LAC", "LDP", "TD3", "LQR"]
+# AGENTS     = ["LAC", "LDP", "TD3", "LQR"]
 ALPHA      = 0.05
+
+BETAS = [round(0.1 * i, 1) for i in range(1, 10)]
+AGENTS = [f"LDP_{beta}" for beta in BETAS] 
+
 
 run_dir = LOG_ROOT / f"run_{RUN_NUMBER}"
 if not run_dir.exists():
     raise FileNotFoundError(f"Run directory {run_dir} not found")
 
 def load_csv_as_array(csv_path: Path, nanaware=True):
-    """Load csv (runs × episodes). Returns ndarray, skips header."""
+    """Load csv (runs x episodes). Returns ndarray, skips header."""
     arr = np.loadtxt(csv_path, delimiter=",", skiprows=1)
     return arr
 
@@ -47,6 +51,18 @@ def normality_table(data_dict):
 
 shapiro_returns = normality_table(returns_data)
 shapiro_steps   = normality_table({k: v for k, v in steps_data.items() if np.isfinite(v).any()})
+
+lev_stat, lev_p = stats.levene(*returns_data.values())
+print(f"\nLevene's test - Returns: stat={lev_stat:.3f}, p={lev_p:.4g}")
+
+
+if shapiro_steps:
+    valid_runs = [v[~np.isnan(v)] for v in steps_data.values() if np.isfinite(v).any()]
+    if len(valid_runs) >= 2:
+        lev_s, lev_ps = stats.levene(*valid_runs)
+        print(f"Levene's test - Steps:   stat={lev_s:.3f}, p={lev_ps:.4g}")
+    else:
+        print("Levene's test - Steps:   not enough groups with data to run Levene's test")
 
 # ---------------- One-way tests ------------------------------------- #
 def one_way_tests(data_dict, nanaware=False):

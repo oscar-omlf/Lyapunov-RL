@@ -181,3 +181,70 @@ def compute_vanderpol_reward(state: np.ndarray, action: float) -> float:
 
     cost = success_bonus - state_cost - action_cost
     return cost
+
+
+def bicycle_dynamics_torch(
+        state: torch.Tensor, 
+        action: torch.Tensor,
+        v: float = 5.0,
+        l: float = 1.0,
+    ) -> torch.Tensor:
+    if state.ndim == 1:
+        x1, x2 = state[0], state[1]
+        u = action[0]
+
+        y1 = v * torch.sin(x2)
+        y2 = v * torch.tan(u) / l - torch.cos(x2) / (1 - x1)
+
+        return torch.stack([y1, y2])
+    
+    elif state.ndim == 2:
+        x1 = state[:, 0]
+        x2 = state[:, 1]
+        u = action[:, 0]
+
+        y1 = v * torch.sin(x2)
+        y2 = v * torch.tan(u) / l - torch.cos(x2) / (1 - x1)
+
+        dxdt = torch.stack([y1, y2], dim=1)
+        return dxdt
+    
+
+def bicycle_dynamics_np(
+        state: np.ndarray, 
+        action: np.ndarray,
+        v: float = 5.0,
+        l: float = 1.0,
+    ) -> np.ndarray:
+    if state.ndim == 1:
+        state = state.reshape(1, -1)
+    if action.ndim == 0:
+        action = np.array([action]).reshape(1, -1)
+    elif action.ndim == 1 and action.shape[0] == state.shape[0]:
+        action = action.reshape(-1, 1)
+
+    x1 = state[:, 0]
+    x2 = state[:, 1]
+    u = action[:, 0]
+
+    y1 = v * np.sin(x2)
+    y2 = v * np.tan(u) / l - np.cos(x2) / (1 - x1)
+
+    dydt = np.stack([y1, y2], axis=1)
+    return dydt
+
+
+def bicycle_dynamics_dreal(
+        state_vars,
+        action_vars,
+        v: float = 5.0,
+        l: float = 1.0,
+    ):
+    x1, x2 = state_vars[0], state_vars[1]
+    u = action_vars[0]
+
+    y1 = v * d.sin(x2)
+    y2 = v * d.tan(u) / l - d.cos(x2) / (1 - x1)
+
+    dydt = np.array([y1, y2])
+    return dydt

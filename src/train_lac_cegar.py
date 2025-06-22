@@ -5,19 +5,13 @@ import torch
 import dreal as d
 
 from agents.agent_factory import AgentFactory
-from util.dynamics import (
-    pendulum_dynamics_torch, 
-    pendulum_dynamics_dreal,
-    vanderpol_dynamics_torch, 
-    vanderpol_dynamics_dreal
-)
 from util.metrics_tracker import MetricsTracker
 from util.logger_utils import setup_run_directory_and_logging
 from util.dreal import extract_ce_from_model
 from util.doa_utils import estimate_doa
-from config import config_lac_pendulum, config_lac_vanderpol
+from config import config_lac_pendulum, config_lac_vanderpol, config_lac_bicycletracking
 
-CFG = config_lac_vanderpol
+CFG = config_lac_bicycletracking
 normalize_gradients = CFG["normalize_gradients"]
 
 R1_LB, R1_UB = CFG["r1_bounds"]
@@ -26,7 +20,7 @@ R2_LB, R2_UB = R1_LB * 2, R1_UB * 2
 TRAINING_STEPS      = 1000
 MAX_OUTER_LOOPS     = 80
 MIN_REL_GAIN        = 0.01
-PATIENCE            = 3
+PATIENCE            = 2
 N_DOA_SAMPLES       = 50_000
 CERTIFICATION_LEVEL_C = 0.4
 

@@ -3,6 +3,7 @@ from agents.actor_critic_agent import ActorCriticAgent
 from agents.lqr_agent import LQRAgent
 from agents.lyapunov_agent import LyapunovAgent
 from agents.td3_agent import TD3Agent
+from agents.las_td3_agent import LAS_TD3Agent
 from agents.las_lyapunov_agent import LAS_LyapunovAgent
 
 
@@ -33,6 +34,8 @@ class AgentFactory:
                 return LyapunovAgent(config)
             elif agent_str == 'TD3':
                  return TD3Agent(config)
+            elif agent_str == 'LAS_TD3':
+                 return LAS_TD3Agent(config)
             elif agent_str == 'LDP':
                  return LAS_LyapunovAgent(config)
             else:

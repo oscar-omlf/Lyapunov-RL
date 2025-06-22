@@ -131,7 +131,7 @@ class LyapunovTrainer(Trainer):
         self.scheduler.step()
 
         self.timesteps += 1
-        if self.timesteps % 20 == 0:
+        if self.timesteps % 200 == 0:
             self.plot_level_set_and_trajectories()
 
         print(f"Lz: {Lz.item():.4f} | Lr: {Lr.item():.4f} | Lp: {Lp.item():.4f} | Lc: {Lc.item():.4f} | Lb: {Lb.item():.4f}")

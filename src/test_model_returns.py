@@ -3,6 +3,7 @@ import logging
 import json
 import numpy as np
 import torch
+from copy import deepcopy
 
 from util.rk4_step import rk4_step
 from agents.agent_factory import AgentFactory
@@ -18,6 +19,7 @@ from util.dynamics import (
 from config import (
     config_ldp_pendulum, 
     config_lac_pendulum, 
+    config_las_td3_pendulum,
     config_td3_pendulum, 
     config_lqr_pendulum
 )
@@ -25,18 +27,21 @@ from config import (
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DT = 0.003
-NUM_RUNS = 50
+NUM_RUNS = 20
 NUM_EPISODES = 500
 NUM_STEPS_PER_EPISODE = 3000
 STABILIZATION_THRESHOLD = 0.0005
 CONSECUTIVE_STABLE_THRESHOLD = 10
 
-CFG_LST = [
-    config_lac_pendulum,
-    config_ldp_pendulum,
-    config_td3_pendulum,
-    config_lqr_pendulum
-]
+
+BETAS = [round(0.1 * i, 1) for i in range(1, 10)]
+CFG_LST = []
+
+for beta in BETAS:
+    cfg = deepcopy(config_las_td3_pendulum)
+    cfg["beta"] = beta
+    CFG_LST.append(cfg)
+
 
 dynamics_fn = pendulum_dynamics_np
 rewards_fn = compute_pendulum_reward
@@ -45,7 +50,6 @@ CFG_EVAL = {
     "model_name": "EVALUATION",
     "environment": "InvertedPendulum",
 }
-       
 
 def run_model_evaluation(
         agent: AbstractAgent, 
@@ -150,11 +154,13 @@ def main():
         cfg_str = json.dumps(cfg, indent=4, default=str)
         logger.info(cfg_str)
         model_name = cfg["model_name"]
+        beta = cfg["beta"]
         agent = AgentFactory.create_agent(config=cfg)
 
         if model_name != "LQR":
-            agent.load(f'./best_models/{model_name}/', episode=0)
+            agent.load(f'./best_models/{model_name}/{cfg["beta"]}/', episode=0)
         
+        model_name = f"LDP_{beta}"
         run_model_evaluation(agent, model_name, run_dir, logger, tracker)
     
     tracker.save_top10_plots(run_dir)

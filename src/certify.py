@@ -84,7 +84,7 @@ config_lac_vanderpol = {
 config_lqr_pendulum = {
     "agent_str": "LQR",
     "environment": "InvertedPendulum",
-    "discrete_discounted": False,
+    "discrete_discounted": True,
     "gamma": 0.99,
     "dt": 0.003,
     "g": 9.81,
@@ -109,8 +109,8 @@ config_lqr_vanderpol = {
     "action_space": np.zeros(1),
 }
 
-CFG_LAC = config_lac_vanderpol
-CFG_LQR = config_lqr_vanderpol
+CFG_LAC = config_lac_pendulum
+CFG_LQR = config_lqr_pendulum
 
 # agent_lac = AgentFactory.create_agent(config=config_lac_pendulum)
 agent_lqr = AgentFactory.create_agent(config=CFG_LQR)
@@ -298,7 +298,7 @@ def lqr_check_continuous(level, scale=2., eps=0.5, delta=1e-3):
     return r1, r2
 
 def lqr_check(level, scale=2., eps=0.5, delta=1e-4):
-    if agent_lqr.discrete_discounted == True:
+    if agent_lqr.discrete_discounted is True:
         return lqr_check_discrete(level, scale, eps, delta)
     else:
         return lqr_check_continuous(level, scale, eps, delta)

@@ -179,19 +179,19 @@ class LAS_TD3Agent(DualPolicyAgent):
         """
         return self.trainer.train()
 
-    def save(self, file_path) -> None:
+    def save(self, file_path, episode=None) -> None:
         """
         Save the actor and critic networks.
         """
         os.makedirs(file_path, exist_ok=True)
-        torch.save(self.actor_model.state_dict(), os.path.join(file_path, "td3_actor.pth"))
-        torch.save(self.critic_model.state_dict(), os.path.join(file_path, "td3_critic.pth"))
+        torch.save(self.actor_model.state_dict(), os.path.join(file_path, "td3_actor_" + str(episode) + ".pth"))
+        torch.save(self.critic_model.state_dict(), os.path.join(file_path, "td3_critic_" + str(episode) + ".pth"))
 
-    def load(self, file_path) -> None:
+    def load(self, file_path, episode=None) -> None:
         """
         Load the actor and critic networks, and synchronize the trainer's target networks.
         """
-        self.actor_model.load_state_dict(torch.load(os.path.join(file_path, "td3_actor.pth")))
-        self.critic_model.load_state_dict(torch.load(os.path.join(file_path, "td3_critic.pth")))
+        self.actor_model.load_state_dict(torch.load(os.path.join(file_path, "td3_actor_" + str(episode) + ".pth"), map_location=torch.device(self.device)))
+        self.critic_model.load_state_dict(torch.load(os.path.join(file_path, "td3_critic_" + str(episode) + ".pth"), map_location=torch.device(self.device)))
         self.actor_target = copy.deepcopy(self.actor_model)
         self.critic_target = copy.deepcopy(self.critic_model)
