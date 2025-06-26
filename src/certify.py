@@ -84,7 +84,7 @@ config_lac_vanderpol = {
 config_lqr_pendulum = {
     "agent_str": "LQR",
     "environment": "InvertedPendulum",
-    "discrete_discounted": True,
+    "discrete_discounted": False,
     "gamma": 0.99,
     "dt": 0.003,
     "g": 9.81,

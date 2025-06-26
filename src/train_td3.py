@@ -1,16 +1,12 @@
+import math
 import torch
 import numpy as np
 import os
 
-from util.dynamics import (
-    pendulum_dynamics_np,
-    compute_pendulum_reward,
-    vanderpol_dynamics_np,
-    compute_vanderpol_reward
-)
 from util.rk4_step import rk4_step
 from agents.td3_agent import TD3Agent
 from util.metrics_tracker import MetricsTracker
+from config import config_td3_pendulum
 
 
 DT = 0.03
@@ -19,49 +15,6 @@ PENDULUM_M = 0.15
 PENDULUM_L = 0.5
 MAX_ACTION_VAL = 1.0
 
-config_td3_pendulum = {
-    "agent_str": "TD3",
-    "environment": "InvertedPendulum",
-    "actor_lr": 3e-4,
-    "critic_lr": 3e-4,
-    "gamma": 0.99,
-    "tau": 0.005,
-    "batch_size": 256,
-    "policy_freq": 2,
-    "policy_noise": 0.2,
-    "noise_clip": 0.5,
-    "start_episodes": 125,
-    "expl_noise": 0.1,
-    "actor_hidden_sizes": (256, 256),
-    "critic_hidden_sizes": (256, 256),
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
-    "max_action": MAX_ACTION_VAL,
-    "dynamics_fn": pendulum_dynamics_np,
-    "rewards_fn": compute_pendulum_reward,
-}
-
-config_td3_vanderpol = {
-    "agent_str": "TD3",
-    "environment": "VanDerPol",
-    "actor_lr": 3e-4,
-    "critic_lr": 3e-4,
-    "gamma": 0.95,
-    "tau": 0.005,
-    "batch_size": 256,
-    "policy_freq": 3,
-    "policy_noise": 0.2,
-    "noise_clip": 0.5,
-    "start_episodes": 200,
-    "expl_noise": 0.20,
-    "actor_hidden_sizes": (256, 256),
-    "critic_hidden_sizes": (256, 256),
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
-    "max_action": MAX_ACTION_VAL,
-    "dynamics_fn": vanderpol_dynamics_np,
-    "rewards_fn": compute_vanderpol_reward,
-}
 
 CFG = config_td3_pendulum
 
@@ -93,8 +46,8 @@ def main():
         ep_critic_losses = []
 
         current_state_np = np.array([
-                    np.random.uniform(-4, 4),   
-                    np.random.uniform(-4.0, 4.0) 
+                    np.random.uniform(-math.pi, math.pi),
+                    np.random.uniform(-8.0, 8.0) 
                 ])
         current_state_torch = torch.as_tensor(current_state_np, dtype=torch.float32, device=DEVICE)
         

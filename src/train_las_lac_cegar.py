@@ -27,7 +27,7 @@ PATIENCE              = 3
 N_DOA_SAMPLES         = 50_000
 CERTIFICATION_LEVEL_C = 0.4        
 
-def bisect_c_star(check_fn, eps=0.25, delta=1e-4,
+def bisect_c_star(check_fn, eps=0.25, delta=1e-5,
                   c_lo=0.01, c_hi=0.95, tol=0.01, max_iter=12):
     ce_model_fail, lo, hi = None, c_lo, c_hi
     for _ in range(max_iter):

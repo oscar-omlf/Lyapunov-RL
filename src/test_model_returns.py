@@ -34,7 +34,7 @@ STABILIZATION_THRESHOLD = 0.0005
 CONSECUTIVE_STABLE_THRESHOLD = 10
 
 
-BETAS = [round(0.1 * i, 1) for i in range(1, 10)]
+BETAS = [0.7]
 CFG_LST = []
 
 for beta in BETAS:
