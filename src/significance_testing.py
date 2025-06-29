@@ -154,20 +154,20 @@ print("\n=== Normality (Steps) ===")
 for k,(s,p) in shapiro_steps.items():
     print(f"  {k}: stat={s:.3f}, p={p:.4g}")
 
-print("\n=== One-way tests – Returns ===")
+print("\n=== One-way tests - Returns ===")
 print(json.dumps(anova_ret, indent=2))
-print("\n=== One-way tests – Steps ===")
+print("\n=== One-way tests - Steps ===")
 print(json.dumps(anova_steps, indent=2))
 
-print("\n=== Pairwise Welch t-tests – Returns (raw p) ===")
+print("\n=== Pairwise Welch t-tests - Returns (raw p) ===")
 print(fmt_pairwise(raw_p_ret))
-print("\n=== Pairwise Welch t-tests – Returns (Holm-adjusted) ===")
+print("\n=== Pairwise Welch t-tests - Returns (Holm-adjusted) ===")
 print(fmt_pairwise(adj_p_ret))
 
 if raw_p_steps:
-    print("\n=== Pairwise Welch t-tests – Steps (raw p) ===")
+    print("\n=== Pairwise Welch t-tests - Steps (raw p) ===")
     print(fmt_pairwise(raw_p_steps))
-    print("\n=== Pairwise Welch t-tests – Steps (Holm-adjusted) ===")
+    print("\n=== Pairwise Welch t-tests - Steps (Holm-adjusted) ===")
     print(fmt_pairwise(adj_p_steps))
 else:
     print("\nNo valid pairwise step comparisons (only one agent produced finite data).")

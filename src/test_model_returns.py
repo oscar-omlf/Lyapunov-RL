@@ -27,7 +27,7 @@ from config import (
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DT = 0.003
-NUM_RUNS = 20
+NUM_RUNS = 50
 NUM_EPISODES = 500
 NUM_STEPS_PER_EPISODE = 3000
 STABILIZATION_THRESHOLD = 0.0005
