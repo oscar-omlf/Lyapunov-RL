@@ -27,10 +27,10 @@ STABILIZATION_THRESHOLD = 0.0005
 
 AGENTS = {
     "TD3":         (config_td3_pendulum,    "./best_models/TD3/"),
-    "LAC":         (config_lac_pendulum,    "./best_models/LAC/"),
-    "LQR":         (config_lqr_pendulum,    "./best_models/LQR/"),
-    "LDP_0.9":     (dict(config_ldp_pendulum, **{"beta":0.9}),    "./best_models/LDP/0.9/"),
-    "LAS_TD3_0.9": (dict(config_las_td3_pendulum, **{"beta":0.9}),"./best_models/LAS_TD3/0.9/")
+    # "LAC":         (config_lac_pendulum,    "./best_models/LAC/"),
+    # "LQR":         (config_lqr_pendulum,    "./best_models/LQR/"),
+    # "LDP_0.9":     (dict(config_ldp_pendulum, **{"beta":0.9}),    "./best_models/LDP/0.9/"),
+    # "LAS_TD3_0.9": (dict(config_las_td3_pendulum, **{"beta":0.9}),"./best_models/LAS_TD3/0.9/")
 }
 
 dynamics_fn = pendulum_dynamics_np

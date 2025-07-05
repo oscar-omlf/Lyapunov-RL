@@ -9,11 +9,8 @@ from util.metrics_tracker import MetricsTracker
 from config import config_td3_pendulum
 
 
-DT = 0.03
-PENDULUM_G = 9.81
-PENDULUM_M = 0.15
-PENDULUM_L = 0.5
-MAX_ACTION_VAL = 1.0
+DT = 0.003
+MAX_ACTION = 1.0
 
 
 CFG = config_td3_pendulum
@@ -30,12 +27,13 @@ def main():
 
     tracker = MetricsTracker()
 
-    NUM_EPISODES = 500
+    NUM_EPISODES = 1000
     NUM_STEPS_PER_EPISODE = 150
     PRINT_EVERY_EPISODES = 10
 
     initial_exploration_steps = 1000
     total_steps_taken = 0
+    total_stabilized = 0
     total_returns = []
     total_actor_losses = []
     total_critic_losses = []
@@ -55,15 +53,14 @@ def main():
         episode_steps = 0
         actor_loss_ep, critic_loss_ep = None, None
 
-        total_stabilized = 0
         episode_stabilized = False
         
         for step in range(NUM_STEPS_PER_EPISODE):
             if total_steps_taken < initial_exploration_steps:
-                action_np = np.random.uniform(-MAX_ACTION_VAL, MAX_ACTION_VAL, size=(agent.action_dim,)) 
+                action_np = np.random.uniform(-MAX_ACTION, MAX_ACTION, size=(agent.action_dim,)) 
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
             else:
-                action_np = agent.policy(current_state_np, noise=False)
+                action_np = agent.policy(current_state_np, noise=False)  # Note that noise is False here
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
 
             next_state_np = rk4_step(dynamics_fn, current_state_np, action_np, DT).squeeze()
