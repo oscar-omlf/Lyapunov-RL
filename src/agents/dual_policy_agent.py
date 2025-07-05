@@ -61,7 +61,7 @@ class DualPolicyAgent(AbstractAgent):
         loss = self._train()
         return loss
     
-    def policy(self, state):
+    def policy(self, state, noise=True) -> np.ndarray:
         """
         Return the blended action: pi_theta(x) = pi_loc(x) + pi_glo(x).
         Where pi_glo(x) is defined as pi_glo(x) = h1(x)*(pi_td3(x) - pi_loc(x)).
@@ -70,7 +70,7 @@ class DualPolicyAgent(AbstractAgent):
             state_t = torch.as_tensor(state, dtype=torch.float32, device=self.device)
 
             pi_loc = self._get_local_action(state_t)
-            pi_glo = self._get_global_action(state_t)
+            pi_glo = self._get_global_action(state_t, noise=noise)
 
             h1_val = self.blending_function.get_h1(state_t)
 

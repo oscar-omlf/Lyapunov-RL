@@ -27,14 +27,14 @@ from config import (
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DT = 0.003
-NUM_RUNS = 50
+NUM_RUNS = 15
 NUM_EPISODES = 500
 NUM_STEPS_PER_EPISODE = 3000
 STABILIZATION_THRESHOLD = 0.0005
 CONSECUTIVE_STABLE_THRESHOLD = 10
 
-
-BETAS = [0.7]
+# 0.1 to 0.9 with step of 0.1, using range() to get floats
+BETAS = [round(x * 0.1, 2) for x in range(1, 4)]
 CFG_LST = []
 
 for beta in BETAS:
@@ -154,13 +154,16 @@ def main():
         cfg_str = json.dumps(cfg, indent=4, default=str)
         logger.info(cfg_str)
         model_name = cfg["model_name"]
-        beta = cfg["beta"]
+        beta = cfg.get("beta", None) 
         agent = AgentFactory.create_agent(config=cfg)
 
         if model_name != "LQR":
-            agent.load(f'./best_models/{model_name}/{cfg["beta"]}/', episode=0)
-        
-        model_name = f"LDP_{beta}"
+            if beta is not None:
+                agent.load(f'./best_models/{model_name}/{cfg["beta"]}/', episode=0)
+                model_name = f"{model_name}_{beta}"
+            else:
+                agent.load(f'./best_models/{model_name}/', episode=0)
+
         run_model_evaluation(agent, model_name, run_dir, logger, tracker)
     
     tracker.save_top10_plots(run_dir)

@@ -81,7 +81,7 @@ class TD3Agent(AbstractAgent):
         """
         return self.trainer.train()
 
-    def policy(self, state) -> np.array:
+    def policy(self, state, noise=True) -> np.array:
         """
         Get the action to take based on the current state, adding Gaussian exploration noise.
         This mimics the original code:
@@ -92,8 +92,11 @@ class TD3Agent(AbstractAgent):
         with torch.no_grad():
             action = self.actor_model(state_t.unsqueeze(0))
         action = action.cpu().numpy().flatten()
-        noise = np.random.normal(0, self.expl_noise * self.max_action, size=action.shape)
-        action = np.clip(action + noise, -self.max_action, self.max_action)
+        if noise:
+            noise = np.random.normal(0, self.expl_noise * self.max_action, size=action.shape)
+            action += noise
+            
+        action = np.clip(action, -self.max_action, self.max_action)
         return action
 
     def save(self, file_path='./saved_models/', episode=None) -> None:

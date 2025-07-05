@@ -146,18 +146,19 @@ class LAS_TD3Agent(DualPolicyAgent):
         Q_comp1 = q_loc + h2_val * (omega_q1 - q_loc)
         return Q_comp1
 
-    def _get_global_action(self, state_torch: torch.Tensor) -> torch.Tensor:
+    def _get_global_action(self, state_torch: torch.Tensor, noise: bool = True) -> torch.Tensor:
         mu_theta_action = self.actor_model(state_torch)
         
-        if self.expl_noise > 0:
+
+        if self.expl_noise > 0 and noise is True:
             noise = torch.normal(
                 0, self.expl_noise * self.max_action,
                 size=mu_theta_action.shape,
                 device=self.device
             )
             mu_theta_action += noise
-            mu_theta_action = torch.clamp(mu_theta_action, -self.max_action, self.max_action)
 
+        mu_theta_action = torch.clamp(mu_theta_action, -self.max_action, self.max_action)
         return mu_theta_action
 
     def add_transition(self, transition: tuple) -> None:

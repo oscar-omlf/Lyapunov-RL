@@ -30,7 +30,7 @@ def main():
 
     tracker = MetricsTracker()
 
-    NUM_EPISODES = 1000
+    NUM_EPISODES = 500
     NUM_STEPS_PER_EPISODE = 150
     PRINT_EVERY_EPISODES = 10
 
@@ -55,13 +55,15 @@ def main():
         episode_steps = 0
         actor_loss_ep, critic_loss_ep = None, None
 
+        total_stabilized = 0
+        episode_stabilized = False
+        
         for step in range(NUM_STEPS_PER_EPISODE):
-
             if total_steps_taken < initial_exploration_steps:
                 action_np = np.random.uniform(-MAX_ACTION_VAL, MAX_ACTION_VAL, size=(agent.action_dim,)) 
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
             else:
-                action_np = agent.policy(current_state_np)
+                action_np = agent.policy(current_state_np, noise=False)
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
 
             next_state_np = rk4_step(dynamics_fn, current_state_np, action_np, DT).squeeze()
@@ -89,6 +91,12 @@ def main():
                 done_torch.cpu()
             ))
 
+            if episode + 1 == NUM_EPISODES:
+                print(f"Step {step+1}/{NUM_STEPS_PER_EPISODE}")
+                print(f"  Current State: {current_state_np}")
+                print(f"  Action: {action_np}")
+                print(f"  Reward: {reward_float}")
+
             actor_loss, critic_loss = None, None
             if total_steps_taken > initial_exploration_steps:
                 actor_loss, critic_loss = agent.update()
@@ -105,6 +113,11 @@ def main():
 
             current_state_torch = next_state_torch
             current_state_np = next_state_np
+
+            # if angle is less than 0.0005 episode stabilized
+            if abs(current_state_np[0]) < 0.0005 and episode_stabilized is False:
+                total_stabilized += 1
+                episode_stabilized = True
 
             if step % 50 == 0 and (episode + 1) % PRINT_EVERY_EPISODES == 0 :
                 with torch.no_grad():
@@ -126,7 +139,8 @@ def main():
             print(f"Episode {episode+1}/{NUM_EPISODES} | Steps: {episode_steps} | Reward: {episode_reward:.2f}")
 
     print("Training finished.")
-    
+    print(f"Episodes with stabilization: {total_stabilized} / {NUM_EPISODES} episodes")
+
     agent.save(file_path="best_models/TD3/")
     tracker.add_run_returns(agent_id_str, total_returns)
     tracker.add_run_losses(agent_id_str, total_actor_losses, total_critic_losses)

@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from util.rk4_step import rk4_step
 from agents.agent_factory import AgentFactory
 from agents.lqr_agent import LQRAgent
+from agents.las_td3_agent import LAS_TD3Agent
+from agents.td3_agent import TD3Agent
 from util.dynamics import pendulum_dynamics_np
 from config import (
     config_lac_pendulum,
@@ -24,8 +26,8 @@ NUM_STEPS = 3000
 STABILIZATION_THRESHOLD = 0.0005
 
 AGENTS = {
-    "LAC":         (config_lac_pendulum,    "./best_models/LAC/"),
     "TD3":         (config_td3_pendulum,    "./best_models/TD3/"),
+    "LAC":         (config_lac_pendulum,    "./best_models/LAC/"),
     "LQR":         (config_lqr_pendulum,    "./best_models/LQR/"),
     "LDP_0.9":     (dict(config_ldp_pendulum, **{"beta":0.9}),    "./best_models/LDP/0.9/"),
     "LAS_TD3_0.9": (dict(config_las_td3_pendulum, **{"beta":0.9}),"./best_models/LAS_TD3/0.9/")
@@ -40,7 +42,7 @@ def simulate_controller(agent, config):
 
     for ep in range(NUM_EPISODES):
         state = np.array([
-            np.random.uniform(-2 * np.pi, 0),
+            np.random.uniform(-np.pi, np.pi),
             np.random.uniform(-8.0, 8.0)
         ], dtype=np.float32)
 
@@ -49,7 +51,10 @@ def simulate_controller(agent, config):
                 action = agent.policy_np(state)
             else:
                 with torch.no_grad():
-                    action = agent.policy(state)
+                    if isinstance(agent, TD3Agent) or isinstance(agent, LAS_TD3Agent):
+                        action = agent.policy(state, noise=False)
+                    else:
+                        action = agent.policy(state)
 
             next_state = rk4_step(dynamics_fn, state, action, DT).squeeze()
 

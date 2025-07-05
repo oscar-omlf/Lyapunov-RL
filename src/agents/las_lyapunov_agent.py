@@ -52,7 +52,7 @@ class LAS_LyapunovAgent(DualPolicyAgent):
             device=self.device,
         )
 
-    def _get_global_action(self, state_torch: torch.Tensor) -> torch.Tensor:
+    def _get_global_action(self, state_torch: torch.Tensor, noise) -> torch.Tensor:
         mu_theta_action = self.actor_model(state_torch)
         return mu_theta_action
     
