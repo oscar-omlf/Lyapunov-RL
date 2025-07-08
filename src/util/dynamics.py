@@ -84,7 +84,7 @@ def pendulum_dynamics_dreal(
 
 def compute_pendulum_reward(state: np.ndarray, action: float) -> float:
     theta, theta_dot = state
-    cost = theta**2 + 0.1 * theta_dot**2 + 0.001 * (action**2)
+    cost = 10 * theta**2 + 0.1 * theta_dot**2 + 0.001 * (action**2)
     return -cost
 
 

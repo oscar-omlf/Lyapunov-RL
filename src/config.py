@@ -206,7 +206,7 @@ config_td3_pendulum = {
     "policy_freq": 2,
     "policy_noise": 0.2,
     "noise_clip": 0.5,
-    "start_episodes": 125,
+    "start_episodes": 100,
     "expl_noise": 0.1,
     "actor_hidden_sizes": (256, 256),
     "critic_hidden_sizes": (256, 256),

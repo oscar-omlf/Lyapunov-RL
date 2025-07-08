@@ -28,10 +28,10 @@ def main():
     tracker = MetricsTracker()
 
     NUM_EPISODES = 1000
-    NUM_STEPS_PER_EPISODE = 150
+    NUM_STEPS_PER_EPISODE = 3000
     PRINT_EVERY_EPISODES = 10
 
-    initial_exploration_steps = 1000
+    initial_exploration_steps = NUM_STEPS_PER_EPISODE * CFG["start_episodes"]
     total_steps_taken = 0
     total_stabilized = 0
     total_returns = []
@@ -60,10 +60,14 @@ def main():
                 action_np = np.random.uniform(-MAX_ACTION, MAX_ACTION, size=(agent.action_dim,)) 
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
             else:
-                action_np = agent.policy(current_state_np, noise=False)  # Note that noise is False here
+                action_np = agent.policy(current_state_np, noise=True)  # Note that noise is True here
                 action_torch = torch.as_tensor(action_np, dtype=torch.float32, device=DEVICE)
 
             next_state_np = rk4_step(dynamics_fn, current_state_np, action_np, DT).squeeze()
+
+            # Normalize state in [-pi, pi] for angle and [-8, 8] for angular velocity
+            next_state_np[0] = (next_state_np[0] + math.pi) % (2 * math.pi) - math.pi  # Normalize angle
+            next_state_np[1] = np.clip(next_state_np[1], -8.0, 8.0)  # Clip angular velocity
 
             next_state_torch = torch.as_tensor(next_state_np, dtype=torch.float32, device=DEVICE)
 
@@ -116,9 +120,9 @@ def main():
                 total_stabilized += 1
                 episode_stabilized = True
 
-            if step % 50 == 0 and (episode + 1) % PRINT_EVERY_EPISODES == 0 :
+            if (step + 1) % 50 == 0 and (episode + 1) % PRINT_EVERY_EPISODES == 0 :
                 with torch.no_grad():
-                    print(f"  Ep {episode+1}, Step {step+1}:"
+                    print(f"  Ep {episode+1}, Step {step + 1}:"
                           f"State: [{current_state_torch[0].item():.2f}, {current_state_torch[1].item():.2f}], "
                           f"Action: {action_np.item() if action_np.ndim > 0 else action_np:.2f}, Reward: {reward_float:.2f}")
                     if actor_loss is not None and critic_loss is not None:
@@ -135,10 +139,13 @@ def main():
         if (episode + 1) % PRINT_EVERY_EPISODES == 0:
             print(f"Episode {episode+1}/{NUM_EPISODES} | Steps: {episode_steps} | Reward: {episode_reward:.2f}")
 
+        if (episode + 1) % 500 == 0:
+            print(f"Saving model at episode {episode + 1}")
+            agent.save(file_path="best_models/TD3/", episode=episode + 1)
+
     print("Training finished.")
     print(f"Episodes with stabilization: {total_stabilized} / {NUM_EPISODES} episodes")
 
-    agent.save(file_path="best_models/TD3/")
     tracker.add_run_returns(agent_id_str, total_returns)
     tracker.add_run_losses(agent_id_str, total_actor_losses, total_critic_losses)
     tracker.save_top10_plots()

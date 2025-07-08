@@ -54,6 +54,7 @@ def simulate_controller(agent, config):
                     if isinstance(agent, TD3Agent) or isinstance(agent, LAS_TD3Agent):
                         action = agent.policy(state, noise=False)
                     else:
+                        print('t')
                         action = agent.policy(state)
 
             next_state = rk4_step(dynamics_fn, state, action, DT).squeeze()
