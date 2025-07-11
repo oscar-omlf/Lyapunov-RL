@@ -1,15 +1,14 @@
 from __future__ import annotations
+import os
 import argparse
 import copy
 import numpy as np
 import torch
-from pathlib import Path
 from datetime import datetime
 
 from util.rk4_step import rk4_step
 from util.dynamics import (
     pendulum_dynamics_np,
-    pendulum_dynamics_dreal,
     compute_pendulum_reward,
 )
 from agents.las_td3_agent import LAS_TD3Agent
@@ -18,62 +17,12 @@ from util.logger_utils import setup_run_directory_and_logging
 from config import config_las_td3_pendulum
 
 
-def make_base_config() -> dict:
-    DT = 0.003
-    PENDULUM_G = 9.81
-    PENDULUM_M = 0.15
-    PENDULUM_L = 0.5
-    PENDULUM_B = 0.1
-    MAX_ACTION_VAL = 1.0
-
-    config = config_las_td3_pendulum
-    config
-
-    config = {
-        "model_name": "LAS_TD3_BetaSearch",
-        "environment": "InvertedPendulum",
-        "max_action": MAX_ACTION_VAL,
-        "dynamics_fn_dreal": pendulum_dynamics_dreal,
-        "LQR": {
-            "agent_str": "LQR",
-            "environment": "InvertedPendulum",
-            "discrete_discounted": True,
-            "gamma": 0.99,
-            "dt": DT,
-            "g": PENDULUM_G,
-            "m": PENDULUM_M,
-            "l": PENDULUM_L,
-            "b": PENDULUM_B,
-            "max_action": MAX_ACTION_VAL,
-            "state_space": np.zeros(2),
-            "action_space": np.zeros(1),
-        },
-        "gamma": 0.9,
-        "tau": 0.005,
-        "policy_freq": 2,
-        "batch_size": 256,
-        "policy_noise": 0.2,
-        "noise_clip": 0.5,
-        "expl_noise": 0.1,
-        "actor_lr": 3e-4,
-        "critic_lr": 3e-4,
-        "actor_hidden_sizes": (256, 256),
-        "critic_hidden_sizes": (256, 256),
-        "state_space": np.zeros(2),
-        "action_space": np.zeros(1),
-        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
-        "c_star": 1.1982,
-    }
-
-    return config
-
-
 def train_once(
     beta: float,
     num_episodes: int,
     steps_per_ep: int,
     base_config: dict,
-    parent_run_dir: Path,
+    parent_run_dir: str,
     logger,
     seed: int = 0,
 ):
@@ -169,7 +118,8 @@ def main():
     parser.add_argument("--seed", type=int, default=0, help="Base random seed")
     args = parser.parse_args()
 
-    base_cfg = make_base_config()
+    base_cfg = config_las_td3_pendulum
+    base_cfg["model_name"] = "LAS_TD3_BetaSearch"
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_cfg["model_name"] += f"_{ts}"
 
@@ -184,7 +134,7 @@ def main():
 
     for beta in args.betas:
         agent_id = f"LAS_TD3_beta{beta:.2f}"
-        sub_dir = Path(run_dir) / f"beta_{beta:.2f}"
+        sub_dir = os.path.join(run_dir, f"beta_{beta:.2f}")
         sub_dir.mkdir(parents=True, exist_ok=True)
 
         for run_idx in range(args.runs):
@@ -193,7 +143,7 @@ def main():
                 args.episodes,
                 args.steps,
                 base_cfg,
-                Path(run_dir),
+                run_dir,
                 logger,
                 seed=args.seed + run_idx,
             )

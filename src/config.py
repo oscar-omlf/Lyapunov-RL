@@ -7,6 +7,7 @@ from util.dynamics import (
     compute_pendulum_reward
 )
 
+DT = 0.003
 PENDULUM_G = 9.81
 PENDULUM_M = 0.15
 PENDULUM_L = 0.5
@@ -18,7 +19,7 @@ config_ldp_pendulum = {
     "agent_str": "LDP",
     "model_name": "LDP",
     "environment": "InvertedPendulum",
-    "max_action": 1.0,
+    "max_action": MAX_ACTION,
     "beta": 0.9,
     "dynamics_fn_dreal": pendulum_dynamics_dreal,
     "dynamics_fn": pendulum_dynamics_torch,
@@ -26,11 +27,11 @@ config_ldp_pendulum = {
         "agent_str": "LQR",
         "environment": "InvertedPendulum",
         "discrete_discounted": False,
-        "g": 9.81,
-        "m": 0.15,
-        "l": 0.5,
-        "b": 0.1,
-        "max_action": 1.0,
+        "g": PENDULUM_G,
+        "m": PENDULUM_M,
+        "l": PENDULUM_L,
+        "b": PENDULUM_B,
+        "max_action": MAX_ACTION,
         "state_space": np.zeros(2),
         "action_space": np.zeros(1),
     },
@@ -40,7 +41,7 @@ config_ldp_pendulum = {
     "num_paths_sampled": 8,
     "norm_threshold": 5e-2,
     "integ_threshold": 500,
-    "dt": 0.003,
+    "dt": DT,
     "actor_hidden_sizes":  (5, 5),
     "critic_hidden_sizes": (20, 20),
     "state_space": np.zeros(2),
@@ -60,7 +61,7 @@ config_lac_pendulum = {
     "dynamics_fn_dreal": pendulum_dynamics_dreal,
     "batch_size": 128,
     "num_paths_sampled": 16,
-    "dt": 0.003,
+    "dt": DT,
     "norm_threshold": 5e-2,
     "integ_threshold": 500,
     "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])),
@@ -84,7 +85,7 @@ config_las_td3_pendulum = {
         "environment": "InvertedPendulum",
         "discrete_discounted": True,
         "gamma": 0.99,
-        "dt": 0.003,
+        "dt": DT,
         "g": PENDULUM_G,
         "m": PENDULUM_M,
         "l": PENDULUM_L,
@@ -140,7 +141,7 @@ config_lqr_pendulum = {
     "environment": "InvertedPendulum",
     "discrete_discounted": False,
     "gamma": 0.99,
-    "dt": 0.003,
+    "dt": DT,
     "g": PENDULUM_G,
     "m": PENDULUM_M,
     "l": PENDULUM_L,
