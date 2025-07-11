@@ -33,8 +33,7 @@ NUM_STEPS_PER_EPISODE = 3000
 STABILIZATION_THRESHOLD = 0.0005
 CONSECUTIVE_STABLE_THRESHOLD = 10
 
-# 0.1 to 0.9 with step of 0.1, using range() to get floats
-BETAS = [round(x * 0.1, 2) for x in range(1, 4)]
+BETAS = [0.9]
 CFG_LST = []
 
 for beta in BETAS:

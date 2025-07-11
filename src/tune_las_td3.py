@@ -15,15 +15,19 @@ from util.dynamics import (
 from agents.las_td3_agent import LAS_TD3Agent
 from util.metrics_tracker import MetricsTracker
 from util.logger_utils import setup_run_directory_and_logging
+from config import config_las_td3_pendulum
 
 
 def make_base_config() -> dict:
-    DT = 0.03
+    DT = 0.003
     PENDULUM_G = 9.81
     PENDULUM_M = 0.15
     PENDULUM_L = 0.5
     PENDULUM_B = 0.1
     MAX_ACTION_VAL = 1.0
+
+    config = config_las_td3_pendulum
+    config
 
     config = {
         "model_name": "LAS_TD3_BetaSearch",
