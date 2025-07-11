@@ -11,7 +11,7 @@ from agents.lqr_agent import LQRAgent
 from agents.abstract_agent import AbstractAgent
 from util.metrics_tracker import MetricsTracker
 from util.logger_utils import setup_run_directory_and_logging
-from util.csv_utils import _write_2d_csv, _write_counts_csv
+from util.csv_utils import write_2d_csv, write_counts_csv
 from util.dynamics import (
     pendulum_dynamics_np,
     compute_pendulum_reward
@@ -124,9 +124,9 @@ def run_model_evaluation(
 
     agent_dir = os.path.join(run_dir, model_name)
     os.makedirs(agent_dir, exist_ok=True)
-    _write_2d_csv(returns_all, os.path.join(agent_dir, "returns.csv"))
-    _write_2d_csv(steps_all, os.path.join(agent_dir, "steps_to_stabilize.csv"))
-    _write_counts_csv(counts_all, os.path.join(agent_dir, "episodes_stabilized.csv"))
+    write_2d_csv(returns_all, os.path.join(agent_dir, "returns.csv"))
+    write_2d_csv(steps_all, os.path.join(agent_dir, "steps_to_stabilize.csv"))
+    write_counts_csv(counts_all, os.path.join(agent_dir, "episodes_stabilized.csv"))
 
     mean_returns = np.mean(returns_all)
     std_returns = np.std(returns_all)

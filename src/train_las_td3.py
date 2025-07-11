@@ -11,58 +11,22 @@ from util.dynamics import (
     pendulum_dynamics_dreal, 
     compute_pendulum_reward
 )
+from config import config_las_td3_pendulum
 
 
 def main():
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
 
-    DT = 0.03
-    PENDULUM_G = 9.81
-    PENDULUM_M = 0.15
-    PENDULUM_L = 0.5
-    PENDULUM_B = 0.1
+    DT = 0.003
     MAX_ACTION_VAL = 1.0
-
-    config = {
-        "model_name": "LAS_TD3_Pendulum",
-        "max_action": MAX_ACTION_VAL,
-        "beta": 0.6,
-        "dynamics_fn_dreal": pendulum_dynamics_dreal,
-        "LQR": {
-            "agent_str": "LQR",
-            "environment": "InvertedPendulum",
-            "discrete_discounted": True,
-            "gamma": 0.99,
-            "dt": DT,
-            "g": PENDULUM_G,
-            "m": PENDULUM_M,
-            "l": PENDULUM_L,
-            "b": PENDULUM_B,
-            "max_action": MAX_ACTION_VAL,
-            "state_space": np.zeros(2),
-            "action_space": np.zeros(1),
-        },
-        "gamma": 0.9,
-        "tau": 0.005,
-        "policy_freq": 2,
-        "batch_size": 256,
-        "policy_noise": 0.2,
-        "noise_clip": 0.5,
-        "expl_noise": 0.1,
-        "actor_lr": 3e-4,
-        "critic_lr": 3e-4,
-        "actor_hidden_sizes": (256, 256),
-        "critic_hidden_sizes": (256, 256),
-        "state_space": np.zeros(2),
-        "action_space": np.zeros(1),
-        "r1_bounds": (np.array([-2.0, -4.0]), np.array([2.0, 4.0])), 
-    }
     
-    # run_dir, logger = setup_run_directory_and_logging(config)
-    # config["run_dir"] = run_dir
+    CFG = config_las_td3_pendulum
 
-    agent = LAS_TD3Agent(config)
+    run_dir, logger = setup_run_directory_and_logging(CFG)
+    CFG["run_dir"] = run_dir
+
+    agent = LAS_TD3Agent(CFG)
     exit()
 
     tracker = MetricsTracker()
@@ -84,9 +48,9 @@ def main():
         ep_critic_losses = []
 
         current_state = np.array([
-                    np.random.uniform(-np.pi, np.pi),   
-                    np.random.uniform(-8.0, 8.0)
-                ])
+            np.random.uniform(-np.pi, np.pi),   
+            np.random.uniform(-8.0, 8.0)
+        ])
         
         episode_reward = 0
         episode_steps = 0
@@ -172,7 +136,7 @@ def main():
     logger.info(f"Saving final model to {run_dir}")
     agent.save(run_dir)
 
-    model_name = config["model_name"]
+    model_name = CFG["model_name"]
     tracker.add_run_returns(model_name, total_returns)
     tracker.add_run_losses(model_name, total_actor_losses, total_critic_losses)
     tracker.save_top10_plots(folder=run_dir)
@@ -181,4 +145,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

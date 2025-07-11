@@ -20,11 +20,11 @@ CFG["model_name"] = f"LDP-{CFG['beta']}"
 R1_LB, R1_UB = CFG["r1_bounds"]
 R2_LB, R2_UB = 2 * R1_LB, 2 * R1_UB
 
-TRAINING_STEPS        = 1000
-MAX_OUTER_LOOPS       = 80
-MIN_REL_GAIN          = 0.01
-PATIENCE              = 3
-N_DOA_SAMPLES         = 50_000
+TRAINING_STEPS = 1000
+MAX_OUTER_LOOPS = 80
+MIN_REL_GAIN = 0.01
+PATIENCE = 3
+N_DOA_SAMPLES = 50_000
 CERTIFICATION_LEVEL_C = 0.4        
 
 def bisect_c_star(check_fn, eps=0.25, delta=1e-5,

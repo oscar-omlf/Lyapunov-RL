@@ -4,11 +4,7 @@ from util.dynamics import (
     pendulum_dynamics_torch,
     pendulum_dynamics_np,
     pendulum_dynamics_dreal,
-    compute_pendulum_reward,
-    vanderpol_dynamics_torch,
-    vanderpol_dynamics_dreal,
-    bicycle_dynamics_torch,
-    bicycle_dynamics_dreal
+    compute_pendulum_reward
 )
 
 PENDULUM_G = 9.81
@@ -54,40 +50,6 @@ config_ldp_pendulum = {
     "c_star": 1.1523,
 }
 
-config_ldp_vanderpol = {
-    "agent_str": "LDP",
-    "model_name": "LDP",
-    "environment": "VanDerPol",
-    "max_action": 1.0,
-    "beta": 0.8,
-    "dynamics_fn_dreal": vanderpol_dynamics_dreal,
-    "dynamics_fn": vanderpol_dynamics_torch,
-    "LQR": {
-        "agent_str": "LQR",
-        "environment": "VanDerPol",
-        "discrete_discounted": False,
-        "mu": 1.0,
-        "max_action": 1.0,
-        "R": 0.1 * np.eye(1),
-        "state_space": np.zeros(2),
-        "action_space": np.zeros(1),
-    },
-    "alpha": 0.1,
-    "lr": 3e-3,
-    "batch_size": 128,
-    "num_paths_sampled": 8,
-    "norm_threshold": 5e-2,
-    "integ_threshold": 150,
-    "dt": 0.01,
-    "actor_hidden_sizes":  (30, 30),
-    "critic_hidden_sizes": (30, 30),
-    "state_space": np.zeros(2),
-    "action_space": np.zeros(1),
-    "r1_bounds": (np.array([-2.0, -2.0]), np.array([2.0, 2.0])), 
-    "normalize_gradients": True,
-    "c_star": 3.9990,
-}
-
 config_lac_pendulum = {
     "agent_str": "Lyapunov-AC",
     "model_name": "LAC",
@@ -109,51 +71,6 @@ config_lac_pendulum = {
     "max_action": 1.0,
     "normalize_gradients": False
 }
-
-config_lac_vanderpol = {
-    "agent_str": "Lyapunov-AC",
-    "model_name": "LAC",
-    "environment": "VanDerPol",
-    "alpha": 0.1,
-    "lr": 3e-3,
-    "dynamics_fn": vanderpol_dynamics_torch,
-    "dynamics_fn_dreal": vanderpol_dynamics_dreal,
-    "batch_size": 128,
-    "num_paths_sampled": 8,
-    "dt": 0.01,
-    "norm_threshold": 5e-2,
-    "integ_threshold": 150,
-    "r1_bounds": (np.array([-2.0, -2.0]), np.array([2.0, 2.0])),
-    "actor_hidden_sizes": (30, 30), 
-    "critic_hidden_sizes": (30, 30),
-    "state_space": np.zeros(2), 
-    "action_space": np.zeros(1), 
-    "max_action": 1.0,
-    "normalize_gradients": True
-}
-
-config_lac_bicycletracking = {
-    "agent_str": "Lyapunov-AC",
-    "model_name": "LAC",
-    "environment": "BicycleTracking",
-    "alpha": 1.5,
-    "lr": 2e-3,
-    "dynamics_fn": bicycle_dynamics_torch,
-    "dynamics_fn_dreal": bicycle_dynamics_dreal,
-    "batch_size": 128,
-    "num_paths_sampled": 8,
-    "dt": 0.003,
-    "norm_threshold": 5e-2,
-    "integ_threshold": 50,
-    "r1_bounds": (np.array([-0.7, -0.7]), np.array([0.7, 0.7])),
-    "actor_hidden_sizes": (20, 20), 
-    "critic_hidden_sizes": (10, 10),
-    "state_space": np.zeros(2), 
-    "action_space": np.zeros(1), 
-    "max_action": 1.0,
-    "normalize_gradients": True
-}
-
 
 config_las_td3_pendulum = {
     "agent_str": "LAS_TD3",

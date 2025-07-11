@@ -5,7 +5,6 @@ from typing import Tuple
 from matplotlib import cm
 import torch
 
-from util.dynamics import pendulum_dynamics_torch, pendulum_dynamics_dreal, vanderpol_dynamics_torch
 from agents.agent_factory import AgentFactory
 from config import (
     config_ldp_pendulum,
@@ -16,6 +15,8 @@ from config import (
 CFG_LDP = config_ldp_pendulum
 CFG_LAC = config_lac_pendulum
 CFG_LQR = config_lqr_pendulum
+
+dynamics_fn = CFG_LAC["dynamics_fn"]
 
 
 def torch_to_np(x_tensor: torch.Tensor) -> np.ndarray:
@@ -135,7 +136,7 @@ def main():
     angle_flow_range = np.linspace(X_grid_np.min(), X_grid_np.max(), 30)
     velocity_flow_range = np.linspace(Y_grid_np.min(), Y_grid_np.max(), 30)
     X_flow_np, Y_flow_np = np.meshgrid(angle_flow_range, velocity_flow_range)
-    plot_streamlines(ax_2d, X_flow_np, Y_flow_np, lac_agent.actor_model, device_name, pendulum_dynamics_torch)
+    plot_streamlines(ax_2d, X_flow_np, Y_flow_np, lac_agent.actor_model, device_name, dynamics_fn)
 
     # Contour for LQR V(x)
     lqr_v_contour_val = 1.1523
