@@ -3,18 +3,20 @@ import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 
 from util.rk4_step import rk4_step
-from util.dynamics import pendulum_dynamics_np, compute_pendulum_reward
+from util.dynamics import pendulum_dynamics_np
 from agents.lqr_agent import LQRAgent
 from config import config_lqr_pendulum
 
 DT = 0.003
 NUM_EPISODES = 200
 NUM_STEPS = 200
+WINDOW = 30
+
 
 print(f'Number of CPU cores in use: {os.cpu_count()}')
 
 def evaluate_candidate(candidate, num_episodes=NUM_EPISODES,
-                       num_steps=NUM_STEPS):
+                       num_steps=NUM_STEPS, window=WINDOW):
     q1, q2, r_val = candidate
     # Make it positive-definite
     q1 = max(q1, 1e-3)
@@ -27,33 +29,30 @@ def evaluate_candidate(candidate, num_episodes=NUM_EPISODES,
 
     agent = LQRAgent(cfg)
 
-    total_reward = 0.0
+    total_cost = 0.0
     for _ in range(num_episodes):
         state = np.array([
             np.random.uniform(-np.pi, np.pi),
             np.random.uniform(-8.0, 8.0)
         ], dtype=np.float32)
 
-        rewards = []
+        state_norms = []
         for t in range(num_steps):
             action = agent.policy_np(state)
             action = np.atleast_1d(action)
 
-            # compute reward from current state and action
-            reward = compute_pendulum_reward(state, action.item())
-            rewards.append(reward)
-
-            # step dynamics
             next_state = rk4_step(pendulum_dynamics_np, state, action, DT).squeeze()
+
+            if t >= num_steps - window:
+                state_norms.append(np.linalg.norm(next_state, ord=2))
+
             state = next_state
 
-        # mean reward for this episode
-        episode_reward = np.mean(rewards)
-        total_reward += episode_reward
+        episode_cost = np.mean(state_norms)
+        total_cost += episode_cost
 
-    # average reward across episodes
-    average_reward = total_reward / num_episodes
-    return average_reward
+    average_cost = total_cost / num_episodes
+    return -average_cost
 
 
 def parallel_evaluate(candidates):
@@ -69,7 +68,6 @@ def bees_algorithm(n=50, m=20, e=10, nep=20, nsp=15,
                        [1e-3, 2]])
     dim = bounds.shape[0]
 
-    # initialize population
     population = np.random.rand(n, dim)
     for i in range(dim):
         population[:, i] = bounds[i, 0] + population[:, i] * (bounds[i, 1] - bounds[i, 0])
@@ -77,10 +75,9 @@ def bees_algorithm(n=50, m=20, e=10, nep=20, nsp=15,
     fitness = parallel_evaluate(population)
     best_idx = np.argmax(fitness)
     best_candidate = population[best_idx]
-    best_fitness = fitness[best_idx]
+    best_reward = fitness[best_idx]
 
     for itr in range(iterations):
-        # sort population by fitness
         idx_sorted = np.argsort(-fitness)
         population = population[idx_sorted]
         fitness = fitness[idx_sorted]
@@ -99,12 +96,10 @@ def bees_algorithm(n=50, m=20, e=10, nep=20, nsp=15,
             idx_loc = np.argmax(local_fit)
             new_pop.append(local[idx_loc])
 
-            # update global best
-            if local_fit[idx_loc] > best_fitness:
-                best_fitness = local_fit[idx_loc]
+            if local_fit[idx_loc] > best_reward:
+                best_reward = local_fit[idx_loc]
                 best_candidate = local[idx_loc]
 
-        # scouts
         scouts = np.random.rand(n-m, dim)
         for i in range(dim):
             scouts[:, i] = bounds[i, 0] + scouts[:, i] * (bounds[i, 1] - bounds[i, 0])
@@ -113,17 +108,16 @@ def bees_algorithm(n=50, m=20, e=10, nep=20, nsp=15,
         population = np.array(new_pop)
         fitness = parallel_evaluate(population)
 
-        print(f"Iteration {itr+1}/{iterations}, best fitness (mean reward): {best_fitness:.6f}")
+        print(f"Iteration {itr+1}/{iterations}, best fitness: {best_reward:.6f}")
 
-    return best_candidate, best_fitness
+    return best_candidate, best_reward
 
 
 if __name__ == "__main__":
-    best_candidate, best_fitness = bees_algorithm(iterations=30)
+    best_candidate, best_reward = bees_algorithm(iterations=30)
     print("Best candidate (q1, q2, r):", best_candidate)
-    print("Best fitness (mean reward):", best_fitness)
+    print("Best fitness (negative avg state norm):", best_reward)
 
-    # build final agent and display K
     q1, q2, r_val = best_candidate
     final_cfg = dict(config_lqr_pendulum)
     final_cfg['Q'] = np.diag([q1, q2])

@@ -77,7 +77,8 @@ def main():
 
     print("Initializing LDP Agent...")
     ldp_agent = AgentFactory.create_agent(config=CFG_LDP)
-    ldp_agent.load(file_path='best_models/LDP/0.8/', episode=0)
+    ldp_agent.load(file_path='best_models/LDP/0.9/', episode=0)
+    CFG_LDP["beta"] = 0.9
     print("LDP Agent loaded successfully.")
 
     print("Initializing Lyapunov-AC Agent...")
@@ -116,15 +117,15 @@ def main():
     
     # 3D Plots
     print("Generating 3D plots...")
-    fig_3d_ldp, ax_3d_ldp = plot_lyapunov_3d(X_grid_np, Y_grid_np, W_ldp_grid_np, 'LDP Learned Zubov Function $W_{learned}(x)$', '$W_{learned}(x)$')
+    fig_3d_ldp, ax_3d_ldp = plot_lyapunov_3d(X_grid_np, Y_grid_np, W_ldp_grid_np, 'LDP Learned Zubov Function $W^{\phi}(x)$', '$W^{\phi}(x)$')
     if ax_3d_ldp.has_data(): ax_3d_ldp.view_init(elev=25, azim=-125)
     plt.savefig('./pendulum_W_ldp_3d.png', dpi=300, bbox_inches='tight')
     
-    fig_3d_lac, ax_3d_lac = plot_lyapunov_3d(X_grid_np, Y_grid_np, W_lac_grid_np, 'LAC Learned Zubov Function $W_{learned}(x)$', '$W_{learned}(x)$')
+    fig_3d_lac, ax_3d_lac = plot_lyapunov_3d(X_grid_np, Y_grid_np, W_lac_grid_np, 'LAC Learned Zubov Function $W(x)$', '$W(x)$')
     if ax_3d_lac.has_data(): ax_3d_lac.view_init(elev=25, azim=-125)
     plt.savefig('./pendulum_W_lac_3d.png', dpi=300, bbox_inches='tight')
 
-    fig_3d_lqr, ax_3d_lqr = plot_lyapunov_3d(X_grid_np, Y_grid_np, V_lqr_grid_np, 'LQR Lyapunov Function $V_{LQR}(x)$', '$V_{LQR}(x)$')
+    fig_3d_lqr, ax_3d_lqr = plot_lyapunov_3d(X_grid_np, Y_grid_np, V_lqr_grid_np, 'LQR Lyapunov Function $V}(x)$', '$V(x)$')
     if ax_3d_lqr.has_data(): ax_3d_lqr.view_init(elev=25, azim=-125)
     plt.savefig('./pendulum_V_lqr_3d.png', dpi=300, bbox_inches='tight')
 

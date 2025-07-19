@@ -33,14 +33,26 @@ NUM_STEPS_PER_EPISODE = 3000
 STABILIZATION_THRESHOLD = 0.0005
 CONSECUTIVE_STABLE_THRESHOLD = 10
 
-BETAS = [0.9]
 CFG_LST = []
 
-for beta in BETAS:
-    cfg = deepcopy(config_las_td3_pendulum)
-    cfg["beta"] = beta
-    CFG_LST.append(cfg)
+# BETAS = [0.9]
+# for beta in BETAS:
+#     cfg = deepcopy(config_las_td3_pendulum)
+#     cfg["beta"] = beta
+#     CFG_LST.append(cfg)
 
+identity_lqr = deepcopy(config_lqr_pendulum)
+identity_lqr["Q"] = np.eye(2)
+identity_lqr["R"] = np.eye(1)
+identity_lqr["model_name"] = "IdentityLQR"
+CFG_LST.append(identity_lqr)
+
+# Best candidate q1 = 0.66727108, q2 = 0.59489391, r = 1.87505769
+best_lqr = deepcopy(config_lqr_pendulum)
+best_lqr['Q'] = np.diag([0.66727108, 0.59489391])
+best_lqr['R'] = np.array([[1.87505769]])
+best_lqr['model_name'] = "BestLQR"
+CFG_LST.append(best_lqr)
 
 dynamics_fn = pendulum_dynamics_np
 rewards_fn = compute_pendulum_reward
@@ -156,7 +168,7 @@ def main():
         beta = cfg.get("beta", None) 
         agent = AgentFactory.create_agent(config=cfg)
 
-        if model_name != "LQR":
+        if not isinstance(agent, LQRAgent):
             if beta is not None:
                 agent.load(f'./best_models/{model_name}/{cfg["beta"]}/', episode=0)
                 model_name = f"{model_name}_{beta}"

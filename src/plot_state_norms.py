@@ -24,6 +24,7 @@ NUM_EPISODES = 500
 NUM_STEPS = 3000
 STABILIZATION_THRESHOLD = 0.0005
 
+
 AGENTS = {
     "TD3":         (config_td3_pendulum,    "./best_models/TD3/"),
     "LAC":         (config_lac_pendulum,    "./best_models/LAC/"),
@@ -53,7 +54,6 @@ def simulate_controller(agent, config):
                     if isinstance(agent, TD3Agent) or isinstance(agent, LAS_TD3Agent):
                         action = agent.policy(state, noise=False)
                     else:
-                        print('t')
                         action = agent.policy(state)
 
             next_state = rk4_step(dynamics_fn, state, action, DT).squeeze()
@@ -72,6 +72,8 @@ def simulate_controller(agent, config):
     return norms, thetas, theta_dots
 
 def main():
+    plt.rcParams['legend.fontsize'] = 14 
+    
     mean_curves = {"norm":{}, "theta":{}, "theta_dot":{}}
     se_curves   = {"norm":{}, "theta":{}, "theta_dot":{}}
 
@@ -81,7 +83,7 @@ def main():
     for name, (cfg, load_path) in AGENTS.items():
         print(f"\n=== Simulating {name} ===")
         agent = AgentFactory.create_agent(config=cfg)
-        if name != "LQR":
+        if not isinstance(agent, LQRAgent):
             agent.load(load_path, episode=0)
 
         norms, thetas, theta_dots = simulate_controller(agent, cfg)
